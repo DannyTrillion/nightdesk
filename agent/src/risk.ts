@@ -28,12 +28,15 @@ async function researchOvernightEvents(
   client: Anthropic,
   feeds: FeedObservation[],
   session: Session,
-): Promise<string> {
+): Promise<{summary: string; searchOk: boolean; resultCount: number; searchError?: string}> {
   const lastPrint = new Date(Math.max(...feeds.map((f) => f.updatedAt)) * 1000).toISOString();
 
-  const response = await client.messages.create({
+  // Streamed: a web search plus adaptive thinking routinely runs past the
+  // non-streaming socket timeout, which surfaces as UND_ERR_SOCKET rather
+  // than anything resembling an API error.
+  const stream = client.messages.stream({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 32000,
     thinking: {type: "adaptive"},
     system:
       "You assess whether stale equity prices remain usable as collateral marks. " +
@@ -56,20 +59,49 @@ async function researchOvernightEvents(
     tools: [{type: "web_search_20260209", name: "web_search", max_uses: 5}],
   });
 
-  return response.content
+  const response = await stream.finalMessage();
+
+  // Server-tool failures arrive as a 200 with an error object in place of the
+  // results list. Nothing throws. Left unchecked, the model quietly writes an
+  // assessment from no evidence and the haircut becomes a guess wearing a
+  // number, so surface it rather than swallow it.
+  let resultCount = 0;
+  let searchError: string | undefined;
+  for (const block of response.content) {
+    if (block.type !== "web_search_tool_result") continue;
+    const content = (block as {content: unknown}).content;
+    if (Array.isArray(content)) resultCount += content.length;
+    else searchError = JSON.stringify(content);
+  }
+  // A search that ran and returned nothing is not the same as a search that
+  // errored, but for risk purposes both mean the same thing: no evidence.
+  const searchOk = resultCount > 0;
+
+  const summary = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n")
     .trim();
+
+  return {summary, searchOk, resultCount, searchError};
 }
 
 /// Step 2: turn that research into a number the contract can act on.
 /// Kept as a separate call because structured outputs and citation-bearing
 /// server-tool results do not compose.
-export async function assessRisk(feeds: FeedObservation[], session: Session): Promise<RiskAssessment> {
+export async function assessRisk(
+  feeds: FeedObservation[],
+  session: Session,
+): Promise<RiskAssessment & {searchOk: boolean}> {
   const client = new Anthropic();
 
   const research = await researchOvernightEvents(client, feeds, session);
+  if (!research.searchOk) {
+    console.warn(
+      `  warning: web search returned no usable results${research.searchError ? ` (${research.searchError})` : ""}.` +
+        `\n  the haircut below is reasoned from staleness alone, not from events.`,
+    );
+  }
   const maxAgeHours = (Math.max(...feeds.map((f) => f.ageSeconds)) / 3600).toFixed(1);
 
   const response = await client.messages.parse({
@@ -95,7 +127,8 @@ export async function assessRisk(feeds: FeedObservation[], session: Session): Pr
           `Session: ${SESSION_NAMES[session]}\n` +
           `Oldest price on chain: ${maxAgeHours}h old\n` +
           `Feeds past their 24h heartbeat: ${feeds.filter((f) => f.pastHeartbeat).length}/${feeds.length}\n\n` +
-          `Research findings:\n${research || "(no findings returned)"}`,
+          `Event search: ${research.searchOk ? `${research.resultCount} results reviewed` : "UNAVAILABLE - no event evidence"}\n\n` +
+          `Research findings:\n${research.summary || "(none)"}`,
       },
     ],
     output_config: {format: zodOutputFormat(RiskAssessment)},
@@ -103,5 +136,5 @@ export async function assessRisk(feeds: FeedObservation[], session: Session): Pr
 
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("risk assessment did not parse");
-  return parsed;
+  return {...parsed, searchOk: research.searchOk};
 }

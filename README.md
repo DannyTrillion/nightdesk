@@ -85,9 +85,37 @@ API, because the API returns `null` in precisely the conditions that matter.
 | `MarketStateOracle.sol` | Built, 11 unit tests + fuzz passing |
 | `ForkStaleness.t.sol` | Built, passing against live mainnet |
 | Attestor agent - chain observation | Built, verified against mainnet |
-| Attestor agent - AI risk assessment | Built, untested (needs `ANTHROPIC_API_KEY`) |
-| Consumer contract (vault / lending demo) | Not started |
+| Attestor agent - AI risk assessment | Built, verified end to end |
+| `NightDeskLending.sol` | Built, 12 tests passing |
 | Testnet deployment | Not started |
+
+## What it buys you
+
+`NightDeskLending` is the flagship consumer: a lending market that reads
+confidence and scales risk parameters instead of choosing between mispricing
+and halting. Measured in `test_borrowCapacityTapersThroughTheWeekend`, on
+$35,000 of collateral at a 70% base LTV:
+
+| Price age | NightDesk capacity | Naive heartbeat integrator |
+|---|---|---|
+| fresh | $24,500 | $24,500 |
+| 18h | $18,375 | $24,500 (trusting a stale price) |
+| 36h | $12,250 | $0 (halted) |
+| 80h | $0 | $0 |
+
+The naive column is the choice available today: full trust until the heartbeat
+expires, then nothing. NightDesk's borrower keeps a shrinking, honestly-priced
+line through the weekend.
+
+### The asymmetry
+
+Borrowing needs 20% confidence. Liquidation needs 50%. That gap is deliberate
+and it is the part a binary fresh/stale check cannot express: a borrower whose
+collateral is merely hard to value should not lose it because the oracle went
+quiet. `test_liquidationBlockedWhenPriceIsUnverifiable` pins the behaviour -
+the price collapses, the market is closed, and the keeper is turned away until
+Monday's real print arrives, at which point
+`test_liquidationProceedsOnceMarketReopens` lets the liquidation through.
 
 ## Running it
 
