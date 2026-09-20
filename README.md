@@ -4,6 +4,12 @@
 
 Stock Tokens trade 24/7. Their price feeds don't.
 
+### → [Live demo](https://dannytrillion.github.io/nightdesk/)
+
+The demo reads Robinhood Chain mainnet from your browser. Nothing is cached or
+staged - if the feeds are stale when you open it, you are watching the problem
+happen.
+
 ---
 
 ## The gap
@@ -87,6 +93,7 @@ API, because the API returns `null` in precisely the conditions that matter.
 | Attestor agent - chain observation | Built, verified against mainnet |
 | Attestor agent - AI risk assessment | Built, verified end to end |
 | `NightDeskLending.sol` | Built, 12 tests passing |
+| Live demo dashboard | Deployed - [dannytrillion.github.io/nightdesk](https://dannytrillion.github.io/nightdesk/) |
 | Testnet deployment | Not started |
 
 ## What it buys you
