@@ -66,7 +66,7 @@ function setRing(bps){
   ring.style.strokeDashoffset = RING_C * (1 - bps/BPS);
   ring.style.stroke = confColor(bps);
   tween(lbl, bps, v => Math.round(v));
-  $("#ringSub").textContent = bps === 0 ? "unusable"
+  $("#ringSub").textContent = bps === 0 ? "no usable price"
     : bps < MIN_BORROW ? "below borrow floor"
     : bps < MIN_LIQ ? "borrow only" : "fully actionable";
 }
@@ -353,11 +353,18 @@ function sim(){
     : state.offsetH===0 ? "Operating normally on the last real print."
     : `Lending against a ${state.offsetH}h-old price as though it were current. No haircut.`;
 
-  $("#ndVerdict").textContent = conf===0
-    ? "Confidence exhausted. The price is genuinely worthless now, and we say so."
-    : conf < MIN_BORROW
-      ? `${conf} bps — under the ${MIN_BORROW} bps borrow floor. Existing loans stand; no new debt.`
-      : `${conf} bps confidence in a ${session} session. Open at an honest haircut.`;
+  // A zero can arrive two ways, and they mean different things. Time simply
+  // running out is decay. The session reopening is new information arriving -
+  // the old print stops being the best estimate the moment discovery resumes.
+  const reopened = conf===0 && age < DECAY.Closed &&
+    (session==="PreMarket" || session==="Open" || session==="PostMarket");
+  $("#ndVerdict").textContent = reopened
+    ? `${session} has begun — real price discovery is resuming, so a ${state.offsetH}h-old close is no longer the best estimate. Confidence drops on purpose, at the moment the information changes.`
+    : conf===0
+      ? "Confidence exhausted. The price is genuinely worthless now, and we say so."
+      : conf < MIN_BORROW
+        ? `${conf} bps — under the ${MIN_BORROW} bps borrow floor. Existing loans stand; no new debt.`
+        : `${conf} bps confidence in a ${session} session. Open at an honest haircut.`;
 
   const adjValue = collateral*(conf/BPS);
   const ltv = adjValue>0 ? Math.round((debt*BPS)/adjValue) : (debt>0 ? BPS*2 : 0);
@@ -365,7 +372,7 @@ function sim(){
   $("#healthFill").style.width = pct+"%";
   $("#healthFill").style.background =
     ltv>=LIQ_LTV ? "var(--coral)" : ltv>LIQ_LTV*.7 ? "var(--amber)" : "var(--sage)";
-  $("#ltvOut").textContent = adjValue>0 ? (ltv/100).toFixed(1)+"%" : "—";
+  $("#ltvOut").textContent = adjValue>0 ? (ltv/100).toFixed(1)+"%" : (debt>0 ? "∞" : "—");
 
   const canBorrow = conf >= MIN_BORROW, canLiq = conf >= MIN_LIQ, unhealthy = ltv >= LIQ_LTV;
 
