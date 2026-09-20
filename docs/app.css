@@ -78,7 +78,8 @@ h1 em{font-style:normal;color:var(--gold)}
 .explain:hover{color:var(--gold)}
 .gaugewrap{display:flex;align-items:center;justify-content:center;flex:1;margin-top:2px}
 .gaugetxt{text-align:center;margin-top:-30px}
-.gaugetxt .g{font-family:var(--disp);font-size:24px;font-weight:600;line-height:1}
+.gaugetxt .g{font-family:var(--disp);font-size:24px;font-weight:600;line-height:1;white-space:nowrap}
+.gaugetxt .g.word{font-size:17px;letter-spacing:-.01em}
 .gaugetxt .s{font-size:10.5px;color:var(--mute);margin-top:2px}
 
 /* section shell */

@@ -77,7 +77,26 @@ function spark(vals,color,w=140,h=32){
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 }
-function gauge(val,max,label,color){
+function barsAbs(vals,cap,colors,w=140,h=32){
+  const bw=w/vals.length;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`+
+    vals.map((v,i)=>{
+      const bh=Math.max(2,Math.min(1,v/cap)*(h-4));
+      return `<rect x="${(i*bw+bw*.2).toFixed(1)}" y="${(h-bh).toFixed(1)}"
+        width="${(bw*.6).toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5" fill="${colors[i]}" opacity=".9"/>`;
+    }).join("")+
+    `<line x1="0" y1="${(h-(h-4)/2).toFixed(1)}" x2="${w}" y2="${(h-(h-4)/2).toFixed(1)}"
+      stroke="rgba(255,255,255,.22)" stroke-width="1" stroke-dasharray="3 3"/></svg>`;
+}
+
+/* Hours until the cash session next opens - the useful reading on a closed market. */
+function hoursToOpen(){
+  let d=new Date();
+  for(let i=0;i<200;i++){ if(sessionAt(d)==="Open") return i; d=new Date(+d+3600e3); }
+  return null;
+}
+
+function gauge(val,max,label,color,display){
   const pct=Math.max(0,Math.min(1,val/max)), C=Math.PI*46;
   return `<div class="gaugewrap"><svg width="118" height="66" viewBox="0 0 118 66">
     <path d="M12,60 A47,47 0 0,1 106,60" fill="none" stroke="rgba(255,255,255,.08)"
@@ -86,7 +105,8 @@ function gauge(val,max,label,color){
       stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}"
       style="transition:stroke-dashoffset .8s cubic-bezier(.2,.7,.25,1)"/>
   </svg></div>
-  <div class="gaugetxt"><div class="g">${val}</div><div class="s">${label}</div></div>`;
+  <div class="gaugetxt"><div class="g${typeof display==="string"?" word":""}">${display??val}</div>
+    <div class="s">${label}</div></div>`;
 }
 
 /* ---------- KPIs ---------- */
@@ -104,13 +124,20 @@ function renderKpis(){
      chip:{t:"24/5 feeds",c:"neu"}, spark:spark(hist.map(h=>h.conf),"var(--gold)"), k:"coverage"},
     {lbl:"Feeds past heartbeat",val:`${stale}/${f.length}`,unit:"",
      chip:{t:stale?"breach":"ok",c:stale?"down":"up"},
-     spark:spark(f.map(x=>Math.min(2,x.age/HEARTBEAT)),stale?"var(--down)":"var(--up)"), k:"heartbeat"},
+     spark:barsAbs(f.map(x=>x.age/HEARTBEAT), 2,
+        f.map(x=>x.stale?"var(--down)":"var(--up)")), k:"heartbeat"},
     {lbl:"Oldest price on chain",val:(oldest/3600).toFixed(1),unit:"h",
      chip:{t:oldest>HEARTBEAT?`+${((oldest-HEARTBEAT)/3600).toFixed(0)}h over`:"within",c:oldest>HEARTBEAT?"down":"up"},
      spark:spark(hist.map(h=>h.age/3600),"var(--blue)"), k:"oldest"},
     {lbl:"Mean confidence",gauge:gauge(avgConf,BPS,"bps avg",cCol(avgConf)), k:"confidence"},
-    {lbl:"Market session",gauge:gauge(S.session==="Open"?100:S.session==="Closed"?0:50,100,
-      S.session,S.session==="Open"?"var(--up)":S.session==="Closed"?"var(--down)":"var(--gold)"), k:"session"},
+    (()=>{ const h=hoursToOpen();
+      const pct = S.session==="Open" ? 100 : h===null ? 0 : Math.max(4,100-(h/72)*100);
+      return {lbl:"Market session",
+        gauge:gauge(pct,100, S.session==="Open"?"open now":h===null?"—":`opens in ~${h}h`,
+          S.session==="Open"?"var(--up)":S.session==="Closed"?"var(--down)":"var(--gold)",
+          S.session),
+        k:"session"};
+    })(),
   ];
   $("#kpis").innerHTML=cards.map(c=>`
     <div class="kpi">
