@@ -6,19 +6,27 @@ Stock Tokens trade 24/7. Their price feeds don't.
 
 ### → [Live app](https://dannytrillion.github.io/nightdesk/)
 
-Reads Robinhood Chain mainnet from your browser. Nothing is cached or staged -
-if the feeds are stale when you open it, you are watching the problem happen.
+An operating console, not a write-up. Reads Robinhood Chain mainnet from the
+browser; nothing is cached or staged.
 
-- **Overview** - the argument, with the week of trading drawn as an hours-by-days matrix
-- **Markets** - live feeds, confidence per instrument, and the coverage gaps
-- **Position** - a time machine that walks real wall-clock forward from the chain's most
-  recent print, so the session changes underneath you as it would in life. Naive
-  integrator and NightDesk priced side by side on the same collateral.
-- **Agent** - the attestation cycle against live chain state, plus wallet connect to
-  price your own Stock Token balances
+**Dashboard** — four stat tiles with derived sparklines (each plots the decay
+model or the live reads, none are decorative), an instrument list, and a detail
+panel: confidence ring, price, spec sheet, and a live control surface. Select an
+instrument and the whole panel repoints. Arm the time machine to walk real
+wall-clock forward from the chain's last actual print and watch the session
+change underneath you. Naive integrator and NightDesk are priced side by side on
+the same collateral, with position health and both risk gates below.
 
-Connect is read-only: `eth_requestAccounts`, a 4902-aware chain add/switch, then
-`balanceOf` against the five Stock Token contracts. Nothing is ever signed.
+**Markets** — the week of trading as an hours-by-days matrix, plus the coverage
+gaps: 137 of 194 Stock Tokens have no price feed at all, and the documented
+offchain tradability API returns null for all 194 while the market is closed.
+
+**Agent** — the attestation cycle against live chain state, and wallet connect
+to price your own Stock Token balances. Read-only; nothing is ever signed.
+
+Every number in the UI runs the same formula as
+`MarketStateOracle._confidence`, so the app and the test suite cannot drift
+apart.
 
 ---
 
