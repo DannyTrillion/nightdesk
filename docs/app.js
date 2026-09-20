@@ -189,11 +189,15 @@ function sim(){
     : canLiq ? "PERMITTED" : "BLOCKED — PRICE UNVERIFIABLE";
   $("#gLiq").style.color = !unhealthy ? "var(--faint)" : canLiq ? "var(--amber)" : "var(--sage)";
 
-  $("#gSummary").textContent = unhealthy && !canLiq
-    ? "This borrower is underwater on paper but cannot be liquidated, because nobody can currently verify the price that says so. They keep their collateral until Monday."
-    : unhealthy && canLiq
-      ? "The market is open and the price is real. Liquidation proceeds normally."
-      : "Position is healthy. Nothing to do.";
+  // Say what is actually true: the gate turns on confidence, not on the
+  // session being open. Claiming "the market is open" here was simply wrong.
+  $("#gSummary").textContent = !unhealthy
+    ? (canBorrow
+        ? "Position is healthy and the price is good enough to lend against."
+        : "Position is healthy, but confidence is under the borrow floor — the loan stands, no new debt.")
+    : !canLiq
+      ? `Underwater on paper at ${(ltv/100).toFixed(0)}% LTV, but confidence is only ${conf} bps — under the ${MIN_LIQ} bps bar. Nobody can verify the price that says this borrower is insolvent, so the collateral stays put until the market reopens.`
+      : `Underwater at ${(ltv/100).toFixed(0)}% LTV and confidence is ${conf} bps, at or above the ${MIN_LIQ} bps bar. The price is trustworthy enough to act on, so liquidation proceeds.`;
 }
 
 /* ---------------- agent log ---------------- */
