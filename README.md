@@ -4,11 +4,21 @@
 
 Stock Tokens trade 24/7. Their price feeds don't.
 
-### → [Live demo](https://dannytrillion.github.io/nightdesk/)
+### → [Live app](https://dannytrillion.github.io/nightdesk/)
 
-The demo reads Robinhood Chain mainnet from your browser. Nothing is cached or
-staged - if the feeds are stale when you open it, you are watching the problem
-happen.
+Reads Robinhood Chain mainnet from your browser. Nothing is cached or staged -
+if the feeds are stale when you open it, you are watching the problem happen.
+
+- **Overview** - the argument, with the week of trading drawn as an hours-by-days matrix
+- **Markets** - live feeds, confidence per instrument, and the coverage gaps
+- **Position** - a time machine that walks real wall-clock forward from the chain's most
+  recent print, so the session changes underneath you as it would in life. Naive
+  integrator and NightDesk priced side by side on the same collateral.
+- **Agent** - the attestation cycle against live chain state, plus wallet connect to
+  price your own Stock Token balances
+
+Connect is read-only: `eth_requestAccounts`, a 4902-aware chain add/switch, then
+`balanceOf` against the five Stock Token contracts. Nothing is ever signed.
 
 ---
 
