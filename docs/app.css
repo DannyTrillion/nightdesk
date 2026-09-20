@@ -142,17 +142,19 @@ tbody tr:hover{background:rgba(243,238,221,.022)}
 .confrow{display:flex;align-items:center;gap:11px}
 .confrow .n{font-family:var(--mono);font-size:12.5px;color:var(--mute);min-width:40px;text-align:right}
 
-/* ---------- week ---------- */
-.weekwrap{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-top:26px}
-.daycol{display:grid;grid-template-columns:repeat(2,1fr);gap:3px}
-.daycol i{aspect-ratio:1;border-radius:3px;background:rgba(243,238,221,.055);transition:.3s}
-.daycol i.open{background:var(--sage);opacity:.85}
-.daycol i.now{outline:1.5px solid var(--cream);outline-offset:1.5px}
-.daylabels{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-top:12px;
-  font-family:var(--mono);font-size:11px;color:var(--faint);text-align:center;letter-spacing:.06em}
-.legend{display:flex;gap:22px;margin-top:22px;font-size:13.5px;color:var(--mute);flex-wrap:wrap}
+/* ---------- week heatmap: rows are hours, columns are days ---------- */
+.heat{display:grid;grid-template-columns:34px repeat(7,1fr);gap:3px;margin-top:26px;
+  align-items:center}
+.heat .hr{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:right;
+  padding-right:6px;letter-spacing:.04em}
+.heat .cell{height:12px;border-radius:2.5px;background:rgba(243,238,221,.05);transition:.3s}
+.heat .cell.open{background:var(--sage);opacity:.82}
+.heat .cell.now{outline:1.5px solid var(--cream);outline-offset:1.5px;z-index:2}
+.heat .hd{font-family:var(--mono);font-size:10.5px;color:var(--faint);text-align:center;
+  letter-spacing:.08em;padding-bottom:5px}
+.legend{display:flex;gap:22px;margin-top:24px;font-size:13.5px;color:var(--mute);flex-wrap:wrap}
 .legend span{display:flex;align-items:center;gap:8px}
-.legend b{width:10px;height:10px;border-radius:3px;display:inline-block}
+.legend b{width:11px;height:11px;border-radius:3px;display:inline-block}
 
 /* ---------- position builder ---------- */
 .builder{display:grid;grid-template-columns:340px 1fr;gap:16px;margin-top:30px;align-items:start}

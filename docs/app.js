@@ -119,17 +119,19 @@ function renderTable(){
 function buildWeek(){
   const wrap = $("#week");
   const {wd:nowD, h:nowH} = nyParts();
-  wrap.innerHTML = "";
-  for(let d=0; d<7; d++){
-    const col = document.createElement("div"); col.className="daycol";
-    for(let h=0; h<24; h++){
-      const i = document.createElement("i");
-      if(d>=1 && d<=5 && h>=9 && h<16) i.className="open";
-      if(d===nowD && h===nowH) i.classList.add("now");
-      col.appendChild(i);
+  const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  let html = '<div></div>' + days.map(d=>`<div class="hd">${d}</div>`).join("");
+
+  for(let h=0; h<24; h++){
+    // Label every sixth hour so the axis reads without crowding.
+    html += `<div class="hr">${h%6===0 ? String(h).padStart(2,"0")+":00" : ""}</div>`;
+    for(let d=0; d<7; d++){
+      const open = d>=1 && d<=5 && h>=9 && h<16;   // 09:30-16:00 ET cash session
+      const now  = d===nowD && h===nowH;
+      html += `<div class="cell${open?" open":""}${now?" now":""}"></div>`;
     }
-    wrap.appendChild(col);
   }
+  wrap.innerHTML = html;
 }
 
 /* ---------------- position builder ---------------- */

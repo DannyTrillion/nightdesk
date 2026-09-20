@@ -33,6 +33,11 @@
   between a price it cannot verify and refusing to operate at all. Everything on this page is read
   live from mainnet, in your browser, right now.</p>
 
+  <div style="display:flex;gap:12px;margin-top:30px;flex-wrap:wrap">
+    <a class="btn primary" href="#position">See what it costs a lender</a>
+    <a class="btn ghost" href="#markets">Live feeds</a>
+  </div>
+
   <div class="statgrid">
     <div class="card tight stat">
       <div class="k">Live price coverage</div>
@@ -63,8 +68,7 @@
   <p class="lede">Each column is a day, each cell an hour. Green is the cash session. Everything
   else is a Stock Token that can still be bought, sold, lent against and liquidated — on a price
   that stopped moving.</p>
-  <div class="weekwrap" id="week"></div>
-  <div class="daylabels"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+  <div class="heat" id="week"></div>
   <div class="legend">
     <span><b style="background:var(--sage)"></b> Market open, feed updating</span>
     <span><b style="background:rgba(243,238,221,.09)"></b> Tokens trading, price frozen</span>
