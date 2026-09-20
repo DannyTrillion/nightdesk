@@ -4,29 +4,33 @@
 
 Stock Tokens trade 24/7. Their price feeds don't.
 
-### → [Live app](https://dannytrillion.github.io/nightdesk/)
+### → [Live terminal](https://dannytrillion.github.io/nightdesk/)
 
-An operating console, not a write-up. Reads Robinhood Chain mainnet from the
-browser; nothing is cached or staged.
+Full-bleed market terminal. Every number comes from a live call to Robinhood
+Chain mainnet; nothing is cached or staged.
 
-**Dashboard** — four stat tiles with derived sparklines (each plots the decay
-model or the live reads, none are decorative), an instrument list, and a detail
-panel: confidence ring, price, spec sheet, and a live control surface. Select an
-instrument and the whole panel repoints. Arm the time machine to walk real
-wall-clock forward from the chain's last actual print and watch the session
-change underneath you. Naive integrator and NightDesk are priced side by side on
-the same collateral, with position health and both risk gates below.
+- **KPI row** — coverage, feeds past heartbeat, oldest print, mean confidence
+  and market session. Each carries a derived sparkline or gauge and its own
+  **Explain**, which opens a sourced derivation rather than restating the number.
+- **NightDesk noticed** — an agent feed generated from what the sweep actually
+  observed: every feed breaching at once, the oldest print and its decayed
+  confidence, divergence when feeds drift apart, how the session was derived,
+  and whether liquidations are being held. Cards appear only when their
+  condition is true. A second tab walks the mechanism end to end.
+- **Confidence and price age** — dual-axis time series over 24H/7D/30D with
+  labelled axes and the 24h heartbeat drawn as a threshold. The sawtooth is the
+  argument: confidence resets each cash session and bleeds out across every
+  weekend.
+- **Feeds at risk**, sorted by confidence ascending, and a **lending impact**
+  panel showing what a borrower keeps versus what the documented approach
+  removes.
+- **Lending** — full simulator with a time machine that walks real wall-clock
+  forward from the chain's last print.
+- **Agent** — the attestation cycle against live state, plus wallet connect to
+  price your own Stock Token balances. Read-only; nothing is signed.
 
-**Markets** — the week of trading as an hours-by-days matrix, plus the coverage
-gaps: 137 of 194 Stock Tokens have no price feed at all, and the documented
-offchain tradability API returns null for all 194 while the market is closed.
-
-**Agent** — the attestation cycle against live chain state, and wallet connect
-to price your own Stock Token balances. Read-only; nothing is ever signed.
-
-Every number in the UI runs the same formula as
-`MarketStateOracle._confidence`, so the app and the test suite cannot drift
-apart.
+Every figure runs the same formula as `MarketStateOracle._confidence`, so the
+terminal and the test suite cannot drift apart.
 
 ---
 
