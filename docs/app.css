@@ -215,3 +215,22 @@ select{width:100%;background:var(--bg-deep);color:var(--cream);border:0;border-r
 .rule{height:1px;background:var(--line-soft);margin:64px 0}
 footer{padding-block:40px 60px;color:var(--faint);font-size:13.5px;
   border-top:1px solid var(--line-soft)}
+
+/* ---------- time machine ---------- */
+.machine{background:var(--bg-deep);border-radius:var(--r-card);padding:18px;margin-bottom:22px;
+  box-shadow:var(--inset)}
+.mrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.mwhen{font-family:var(--serif);font-size:20px;letter-spacing:-.01em}
+.msess{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  font-weight:600}
+.hint{font-family:var(--body);font-size:12.5px;color:var(--faint);margin:12px 0 0;line-height:1.45}
+
+/* ---------- confidence ring ---------- */
+.ring{position:relative;width:120px;height:120px;flex:0 0 auto}
+.ring circle{transition:stroke-dashoffset .7s cubic-bezier(.2,.7,.3,1),stroke .4s}
+.ringtext{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;pointer-events:none}
+.ringtext .rv{font-family:var(--serif);font-size:27px;letter-spacing:-.02em;line-height:1}
+.ringtext .rl{font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.14em;
+  margin-top:3px}
+@media (prefers-reduced-motion:reduce){.ring circle{transition:none}}

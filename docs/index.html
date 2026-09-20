@@ -19,7 +19,10 @@
       <a href="#position" data-v="position">Position</a>
       <a href="#agent"    data-v="agent">Agent</a>
     </nav>
-    <div class="clock" id="clock">—</div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="clock" id="clock">—</div>
+      <button class="btn ghost" id="connectBtn" style="padding:8px 16px;font-size:13.5px">Connect wallet</button>
+    </div>
   </div>
 </div>
 
@@ -41,7 +44,7 @@
   <div class="statgrid">
     <div class="card tight stat">
       <div class="k">Live price coverage</div>
-      <div class="v">19.3<span style="font-size:24px">%</span></div>
+      <div class="v"><span id="coverage">0.0</span><span style="font-size:24px">%</span></div>
       <div class="s">32.5 of every 168 hours</div>
     </div>
     <div class="card tight stat">
@@ -163,10 +166,15 @@
           <option value="500000">$500,000</option>
         </select>
       </div>
-      <div class="field">
-        <label>Price age <b id="ageOut">0h</b></label>
+      <div class="machine">
+        <div class="mrow">
+          <span class="mwhen" id="machineWhen">—</span>
+          <span class="msess" id="machineSession">—</span>
+        </div>
+        <label style="margin-top:14px">Time since last print <b id="ageOut">0h</b></label>
         <input type="range" id="ageSlider" min="0" max="80" value="0" step="1">
-        <div class="ticks"><span>fresh</span><span>24h</span><span>72h</span><span>80h</span></div>
+        <div class="ticks"><span>last print</span><span>24h</span><span>72h</span><span>80h</span></div>
+        <p class="hint">Scrub forward from the chain's most recent real price. Arrow keys nudge.</p>
       </div>
       <div class="field">
         <label>Agent event haircut <b id="haircutOut">0 bps</b></label>
@@ -203,6 +211,23 @@
           <p class="tag">Scales borrowing power by confidence, which decays with the session.</p>
           <div class="cap" id="ndCap">$24,500</div>
           <div class="verdict" id="ndVerdict">10000 bps — full confidence.</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+        <div class="ring">
+          <svg viewBox="0 0 120 120" width="120" height="120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(243,238,221,.07)" stroke-width="8"/>
+            <circle id="ringFill" cx="60" cy="60" r="52" fill="none" stroke="var(--sage)"
+              stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="326.7" stroke-dashoffset="0"
+              transform="rotate(-90 60 60)"/>
+          </svg>
+          <div class="ringtext"><div class="rv" id="ringVal">10000</div><div class="rl">bps</div></div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div class="who">Price confidence</div>
+          <p style="color:var(--cream-dim);font-size:14.5px;margin:8px 0 0" id="ringSub">fully actionable</p>
         </div>
       </div>
 
@@ -244,6 +269,15 @@
       <div class="log" id="agentLog"><div class="t">waiting for first cycle…</div></div>
       <p class="note">Status: <span id="connState">connecting</span> · refreshes every 30s</p>
     </div>
+    <div class="card">
+      <h3>Your position</h3>
+      <p style="color:var(--mute);font-size:14.5px;margin:0 0 16px;line-height:1.55">
+      Connect to read your real Stock Token balances on chain 4663 and price them against the
+      same feeds. Read-only — nothing is signed.</p>
+      <div id="holdings"></div>
+      <p class="note" id="walletNote">Not connected.</p>
+    </div>
+
     <div class="card">
       <h3>How session state is derived</h3>
       <p style="color:var(--mute);font-size:14.5px;line-height:1.6">A hardcoded holiday calendar
