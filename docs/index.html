@@ -4,309 +4,232 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NightDesk — price confidence for Robinhood Chain</title>
-<meta name="description" content="Stock Tokens trade 24/7. Their price feeds update 24/5. NightDesk is the onchain market-session and price-confidence oracle that closes the gap.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23FFAAA5'/%3E%3C/svg%3E">
+<meta name="description" content="Stock Tokens trade 24/7. Their feeds update 24/5. NightDesk prices the gap so lending markets stay open instead of freezing.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23EBC98A'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
-<div class="topbar">
-  <div class="wrap">
-    <div class="brand"><span class="orb" id="orb"></span> NightDesk</div>
-    <nav class="tabs">
-      <a href="#overview" data-v="overview" class="on">Overview</a>
-      <a href="#markets"  data-v="markets">Markets</a>
-      <a href="#position" data-v="position">Position</a>
-      <a href="#agent"    data-v="agent">Agent</a>
-    </nav>
-    <div style="display:flex;align-items:center;gap:14px">
-      <div class="clock" id="clock">—</div>
-      <button class="btn ghost" id="connectBtn" style="padding:8px 16px;font-size:13.5px">Connect wallet</button>
-    </div>
-  </div>
-</div>
+<div class="topbar"><div class="shell">
+  <div class="logo"><span class="mark">N</span> NightDesk</div>
+  <nav class="pills">
+    <a href="#dashboard" data-v="dashboard" class="on">Dashboard</a>
+    <a href="#markets"   data-v="markets">Markets</a>
+    <a href="#agent"     data-v="agent">Agent</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="clock" id="clock">—</div>
+  <button class="chipbtn" id="liveChip"><span class="led" id="led"></span><span id="liveTxt">connecting</span></button>
+  <button class="chipbtn" id="connectBtn">Connect wallet</button>
+</div></div>
 
-<!-- ======================= OVERVIEW ======================= -->
-<section class="view on" id="v-overview"><div class="wrap">
-  <p class="eyebrow">Robinhood Chain · 4663</p>
-  <h1>Stock Tokens trade 24/7.<br>Their price feeds <span class="coral">don't</span>.</h1>
-  <p class="lede">Robinhood Chain settles tokenized equities as ordinary ERC-20s, transferable every
-  second of every day. The Chainlink feeds behind them update <strong>24/5, following market
-  hours</strong>. For roughly four fifths of the week, every protocol on this chain is choosing
-  between a price it cannot verify and refusing to operate at all. Everything on this page is read
-  live from mainnet, in your browser, right now.</p>
+<!-- ===================== DASHBOARD ===================== -->
+<section class="view on" id="v-dashboard"><div class="shell">
 
-  <div style="display:flex;gap:12px;margin-top:30px;flex-wrap:wrap">
-    <a class="btn primary" href="#position">See what it costs a lender</a>
-    <a class="btn ghost" href="#markets">Live feeds</a>
-  </div>
-
-  <div class="statgrid">
-    <div class="card tight stat">
-      <div class="k">Live price coverage</div>
-      <div class="v"><span id="coverage">0.0</span><span style="font-size:24px">%</span></div>
-      <div class="s">32.5 of every 168 hours</div>
-    </div>
-    <div class="card tight stat">
-      <div class="k">Feeds past heartbeat</div>
-      <div class="v" id="staleCount">—</div>
-      <div class="s" id="staleSub">reading mainnet…</div>
-    </div>
-    <div class="card tight stat">
-      <div class="k">Oldest price on chain</div>
-      <div class="v" id="oldest">—</div>
-      <div class="s">heartbeat is 24h</div>
-    </div>
-    <div class="card tight stat">
-      <div class="k">Market session</div>
-      <div class="v" id="sessionV">—</div>
-      <div class="s">derived, New York time</div>
-    </div>
-  </div>
-
-  <div class="rule"></div>
-
-  <p class="eyebrow">One week of trading</p>
-  <h2>Where price discovery actually happens</h2>
-  <p class="lede">Each column is a day, each cell an hour. Green is the cash session. Everything
-  else is a Stock Token that can still be bought, sold, lent against and liquidated — on a price
-  that stopped moving.</p>
-  <div class="heat" id="week"></div>
-  <div class="legend">
-    <span><b style="background:var(--sage)"></b> Market open, feed updating</span>
-    <span><b style="background:rgba(243,238,221,.09)"></b> Tokens trading, price frozen</span>
-    <span><b style="box-shadow:0 0 0 1.5px var(--cream)"></b> Now</span>
-  </div>
-
-  <div class="rule"></div>
-
-  <p class="eyebrow">The primitive</p>
-  <h2>A third option</h2>
-  <p class="lede">Instead of a binary fresh-or-stale check, NightDesk returns a confidence score
-  that decays at a rate set by the session. An hour-old price during the open is suspect, because
-  discovery is happening without it. The same price at 2am on a Sunday is the best information in
-  existence. A lending market reads that number and widens its parameters instead of freezing.</p>
-  <div class="split">
-    <div class="card">
-      <h3>What you call</h3>
-      <div class="log" style="max-height:none">
-<div><span class="t">(</span>int256 price,</div>
-<div> uint256 age,</div>
-<div> uint16 <span class="ok">confidenceBps</span>,</div>
-<div> Session session<span class="t">)</span></div>
-<div>  = marketState.priceWithConfidence(feed);</div>
-      </div>
-    </div>
-    <div class="card">
-      <h3>What it replaces</h3>
-      <div class="log" style="max-height:none">
-<div><span class="t">// the documented advice</span></div>
-<div>(, int256 p,, uint256 u,) = feed.latestRoundData();</div>
-<div><span class="bad">require(block.timestamp - u &lt; 86400);</span></div>
-<div><span class="t">// ...and on a Sunday, you revert</span></div>
-      </div>
-    </div>
-  </div>
-</div></section>
-
-<!-- ======================= MARKETS ======================= -->
-<section class="view" id="v-markets"><div class="wrap">
-  <p class="eyebrow">Live · unauthenticated reads</p>
-  <h2>Feeds on Robinhood Chain</h2>
-  <p class="lede">Read straight from the Chainlink aggregator proxies on chain 4663 — no backend,
-  no cache, no staged numbers. Chainlink documents an 86,400 second heartbeat on these feeds, and
-  Robinhood's integration guide tells builders to reject anything older.</p>
-
-  <div style="margin-top:30px" class="tablewrap">
-    <table>
-      <thead><tr><th>Instrument</th><th>Price</th><th>Age</th><th>Confidence</th><th>Status</th></tr></thead>
-      <tbody id="feedRows"><tr><td colspan="5" style="color:var(--faint)">connecting to mainnet…</td></tr></tbody>
-    </table>
-  </div>
-  <p class="note" id="chainNote">—</p>
-
-  <div class="rule"></div>
-  <div class="split">
-    <div class="card">
-      <h3>Coverage</h3>
-      <div class="kv"><span class="k">Stock Tokens live on chain</span><span class="v">194</span></div>
-      <div class="kv"><span class="k">With a Chainlink feed</span><span class="v">57</span></div>
-      <div class="kv"><span class="k">With no price feed at all</span><span class="v" style="color:var(--coral)">137</span></div>
-      <p class="note" style="font-family:var(--body);font-size:13.5px;color:var(--mute)">
-      Most tokenized equities on this chain have no onchain price source whatsoever.</p>
-    </div>
-    <div class="card">
-      <h3>The other missing piece</h3>
-      <div class="kv"><span class="k">Onchain market-status primitive</span><span class="v" style="color:var(--coral)">none</span></div>
-      <div class="kv"><span class="k">Offchain tradability API</span><span class="v">/rhj/assets</span></div>
-      <div class="kv"><span class="k">Assets returning null while closed</span><span class="v" style="color:var(--coral)">194 / 194</span></div>
-      <p class="note" style="font-family:var(--body);font-size:13.5px;color:var(--mute)">
-      No contract on Robinhood Chain can currently tell whether the market is open, and the
-      documented offchain fallback returns nothing in exactly the conditions that matter.</p>
-    </div>
-  </div>
-</div></section>
-
-<!-- ======================= POSITION ======================= -->
-<section class="view" id="v-position"><div class="wrap">
-  <p class="eyebrow">Interactive</p>
-  <h2>What it costs a lending market</h2>
-  <p class="lede">A borrower posts Stock Token collateral at a 70% base LTV. Age the price and watch
-  the two designs come apart. These are the same numbers
-  <strong>NightDeskLending.t.sol</strong> asserts.</p>
-
-  <div class="builder">
-    <div class="card">
-      <div class="field">
-        <label>Collateral</label>
-        <select id="collateralSel">
-          <option value="10000">$10,000</option>
-          <option value="35000" selected>$35,000</option>
-          <option value="100000">$100,000</option>
-          <option value="500000">$500,000</option>
-        </select>
-      </div>
-      <div class="machine">
-        <div class="mrow">
-          <span class="mwhen" id="machineWhen">—</span>
-          <span class="msess" id="machineSession">—</span>
-        </div>
-        <label style="margin-top:14px">Time since last print <b id="ageOut">0h</b></label>
-        <input type="range" id="ageSlider" min="0" max="80" value="0" step="1">
-        <div class="ticks"><span>last print</span><span>24h</span><span>72h</span><span>80h</span></div>
-        <p class="hint">Scrub forward from the chain's most recent real price. Arrow keys nudge.</p>
-      </div>
-      <div class="field">
-        <label>Agent event haircut <b id="haircutOut">0 bps</b></label>
-        <input type="range" id="haircutSlider" min="0" max="9000" value="0" step="250">
-        <div class="ticks"><span>quiet</span><span>shock</span></div>
-      </div>
-      <div class="field">
-        <label>Debt drawn <b id="borrowOut">$0</b></label>
-        <input type="range" id="borrowSlider" min="0" max="100" value="0" step="1">
-        <div class="ticks"><span>none</span><span>full capacity</span></div>
-      </div>
-      <button class="btn ghost" id="nowBtn" style="width:100%">Set to live mainnet age</button>
-
-      <div class="healthwrap">
-        <div class="field" style="margin:20px 0 0">
-          <label>Position LTV <b id="ltvOut">—</b></label>
-          <div class="healthbar"><i id="healthFill" style="width:0%;background:var(--sage)"></i>
-            <span class="mark" style="left:100%"></span></div>
-          <div class="ticks"><span>safe</span><span>85% — liquidation</span></div>
-        </div>
-      </div>
-    </div>
-
+  <div class="headrow">
     <div>
-      <div class="vs">
-        <div class="card coral">
-          <div class="who">Naive integrator</div>
-          <p class="tag">Follows the documented advice: trust the price, reject it past the heartbeat.</p>
-          <div class="cap" id="naiveCap">$24,500</div>
-          <div class="verdict" id="naiveVerdict">Operating normally on a fresh price.</div>
-        </div>
-        <div class="card sage">
-          <div class="who">NightDesk</div>
-          <p class="tag">Scales borrowing power by confidence, which decays with the session.</p>
-          <div class="cap" id="ndCap">$24,500</div>
-          <div class="verdict" id="ndVerdict">10000 bps — full confidence.</div>
-        </div>
-      </div>
+      <p class="greet" id="greet">Robinhood Chain · 4663</p>
+      <h1>Stock Tokens trade 24/7.<br>Their price feeds <span class="gold">don't</span>.</h1>
+    </div>
+    <div class="seg" id="rangeSeg">
+      <button class="on" data-r="7">Week</button>
+      <button data-r="1">Day</button>
+    </div>
+  </div>
 
-      <div class="card" style="margin-top:16px;display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+  <div class="stats" id="statTiles"></div>
+
+  <div class="md">
+    <!-- master -->
+    <div>
+      <div class="listhead"><span class="t">Instruments</span><span class="t mono" id="assetCount">—</span></div>
+      <div class="assetlist" id="assetList"></div>
+    </div>
+
+    <!-- detail -->
+    <div class="panel" id="detail">
+      <div class="hero">
         <div class="ring">
-          <svg viewBox="0 0 120 120" width="120" height="120">
-            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(243,238,221,.07)" stroke-width="8"/>
-            <circle id="ringFill" cx="60" cy="60" r="52" fill="none" stroke="var(--sage)"
-              stroke-width="8" stroke-linecap="round"
-              stroke-dasharray="326.7" stroke-dashoffset="0"
-              transform="rotate(-90 60 60)"/>
+          <svg viewBox="0 0 168 168" width="168" height="168">
+            <circle cx="84" cy="84" r="72" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="10"/>
+            <circle id="ringFill" cx="84" cy="84" r="72" fill="none" stroke="var(--gold)"
+              stroke-width="10" stroke-linecap="round" stroke-dasharray="452.4" stroke-dashoffset="0"
+              transform="rotate(-90 84 84)"/>
           </svg>
-          <div class="ringtext"><div class="rv" id="ringVal">10000</div><div class="rl">bps</div></div>
+          <div class="ringtext"><div class="rv" id="ringVal">—</div><div class="rl">CONFIDENCE</div></div>
         </div>
-        <div style="flex:1;min-width:200px">
-          <div class="who">Price confidence</div>
-          <p style="color:var(--cream-dim);font-size:14.5px;margin:8px 0 0" id="ringSub">fully actionable</p>
+        <div class="hmeta">
+          <span class="tag" id="dTag"><i></i><span id="dTagTxt">—</span></span>
+          <div class="big" id="dPrice">—</div>
+          <div class="cap" id="dCap">Select an instrument.</div>
         </div>
       </div>
 
-      <div class="card" style="margin-top:16px">
-        <h3>The asymmetry</h3>
-        <p style="color:var(--mute);font-size:14.5px;margin:0">Borrowing and liquidation do not get
-        the same bar, and that gap is the whole safety argument.</p>
-        <div class="gates">
-          <div class="card tight gate" style="box-shadow:var(--inset)">
-            <div class="n">Borrow needs 2000 bps</div>
-            <div class="g" style="color:var(--cream)">20%</div>
-            <div class="state" id="gBorrow">PERMITTED</div>
+      <div class="specs">
+        <div class="spec"><div class="k">Price age</div><div class="v" id="sAge">—</div></div>
+        <div class="spec"><div class="k">Heartbeat</div><div class="v">24h</div></div>
+        <div class="spec"><div class="k">Session</div><div class="v" id="sSession">—</div></div>
+        <div class="spec"><div class="k">Decay window</div><div class="v" id="sWindow">—</div></div>
+        <div class="spec"><div class="k">Feed decimals</div><div class="v">8</div></div>
+        <div class="spec"><div class="k">Last print</div><div class="v" id="sPrint">—</div></div>
+      </div>
+
+      <div class="controls">
+        <div class="switchrow" style="margin-bottom:18px">
+          <div>
+            <div class="t">Time machine</div>
+            <div class="d" id="machineWhen">walks forward from the last real print</div>
           </div>
-          <div class="card tight gate" style="box-shadow:var(--inset)">
-            <div class="n">Liquidation needs 5000 bps</div>
-            <div class="g" style="color:var(--cream)">50%</div>
-            <div class="state" id="gLiq">N/A — POSITION HEALTHY</div>
-          </div>
+          <div class="sw" id="machineSw"><i></i></div>
         </div>
-        <p style="color:var(--cream-dim);font-size:14px;margin:18px 0 0;line-height:1.55"
-           id="gSummary">Position is healthy. Nothing to do.</p>
+
+        <div class="ctl">
+          <label><span class="n">Time since last print</span><span class="v" id="ageOut">0h</span></label>
+          <input type="range" id="ageSlider" min="0" max="80" value="0" step="1">
+          <div class="ticks"><span>now</span><span>24h</span><span>72h</span><span>80h</span></div>
+        </div>
+
+        <div class="ctl">
+          <label><span class="n">Agent event haircut</span><span class="v" id="haircutOut">0 bps</span></label>
+          <input type="range" id="haircutSlider" min="0" max="9000" value="0" step="250">
+          <div class="ticks"><span>quiet tape</span><span>shock</span></div>
+        </div>
+
+        <div class="ctl">
+          <label><span class="n">Collateral posted</span><span class="v" id="collOut">$35,000</span></label>
+          <input type="range" id="collSlider" min="5000" max="500000" value="35000" step="5000">
+          <div class="ticks"><span>$5k</span><span>$500k</span></div>
+        </div>
+
+        <div class="ctl">
+          <label><span class="n">Debt drawn</span><span class="v" id="borrowOut">$0</span></label>
+          <input type="range" id="borrowSlider" min="0" max="100" value="0" step="1">
+          <div class="ticks"><span>none</span><span>full capacity</span></div>
+        </div>
+
+        <div class="actions">
+          <button class="btn" id="resetBtn">Reset to live</button>
+          <button class="btn gold" id="borrowBtn">Borrow max</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cmp">
+    <div class="panel pad">
+      <div class="who">Naive integrator</div>
+      <div class="amt" id="naiveCap">—</div>
+      <div class="vd" id="naiveVerdict">Trusts the price, then rejects it past the heartbeat.</div>
+    </div>
+    <div class="panel pad">
+      <div class="who">NightDesk</div>
+      <div class="amt" id="ndCap" style="color:var(--gold)">—</div>
+      <div class="vd" id="ndVerdict">Scales borrowing power by confidence.</div>
+    </div>
+  </div>
+
+  <div class="panel pad" style="margin-top:13px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap">
+      <div><h3>Position health</h3><p class="sub">Confidence-adjusted, exactly as the contract computes it.</p></div>
+      <div class="mono" style="font-size:20px;font-weight:600" id="ltvOut">—</div>
+    </div>
+    <div style="height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:16px">
+      <i id="healthFill" style="display:block;height:100%;width:0%;background:var(--green);
+        border-radius:99px;transition:.55s cubic-bezier(.2,.7,.25,1)"></i>
+    </div>
+    <div class="ticks"><span>safe</span><span>85% — liquidation threshold</span></div>
+    <div class="grid2" style="margin-top:20px">
+      <div class="switchrow">
+        <div><div class="t">Borrow gate</div><div class="d">needs 2000 bps</div></div>
+        <div class="mono" id="gBorrow" style="font-size:12px;font-weight:600">—</div>
+      </div>
+      <div class="switchrow">
+        <div><div class="t">Liquidation gate</div><div class="d">needs 5000 bps</div></div>
+        <div class="mono" id="gLiq" style="font-size:12px;font-weight:600">—</div>
+      </div>
+    </div>
+    <p style="font-size:13.5px;color:var(--ink-2);margin:17px 0 0;line-height:1.55" id="gSummary">—</p>
+  </div>
+
+</div></section>
+
+<!-- ===================== MARKETS ===================== -->
+<section class="view" id="v-markets"><div class="shell">
+  <div class="headrow">
+    <div><p class="greet">Live · unauthenticated reads</p>
+      <h1>Where price discovery<br>actually happens</h1></div>
+  </div>
+
+  <div class="panel pad">
+    <h3>One week of trading</h3>
+    <p class="sub">Rows are hours, columns are days. Gold is the cash session — the only window
+    where these feeds update. Everything else is a Stock Token trading on a frozen price.</p>
+    <div class="heat" id="week" style="margin-top:22px"></div>
+    <div class="legend">
+      <span><b style="background:var(--gold);opacity:.72"></b> Market open, feed updating</span>
+      <span><b style="background:rgba(255,255,255,.045)"></b> Tokens trading, price frozen</span>
+      <span><b style="box-shadow:0 0 0 1.5px var(--ink)"></b> Now</span>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:13px">
+    <div class="panel pad">
+      <h3>Feed coverage</h3>
+      <p class="sub">Most tokenized equities here have no onchain price at all.</p>
+      <div style="margin-top:14px">
+        <div class="kv"><span class="k">Stock Tokens live on chain</span><span class="v">194</span></div>
+        <div class="kv"><span class="k">With a Chainlink feed</span><span class="v">57</span></div>
+        <div class="kv"><span class="k">With no price feed</span><span class="v" style="color:var(--red)">137</span></div>
+      </div>
+    </div>
+    <div class="panel pad">
+      <h3>The other missing piece</h3>
+      <p class="sub">No contract here can tell whether the market is open.</p>
+      <div style="margin-top:14px">
+        <div class="kv"><span class="k">Onchain market-status primitive</span><span class="v" style="color:var(--red)">none</span></div>
+        <div class="kv"><span class="k">Offchain fallback</span><span class="v">/rhj/assets</span></div>
+        <div class="kv"><span class="k">Returning null while closed</span><span class="v" style="color:var(--red)">194 / 194</span></div>
       </div>
     </div>
   </div>
 </div></section>
 
-<!-- ======================= AGENT ======================= -->
-<section class="view" id="v-agent"><div class="wrap">
-  <p class="eyebrow">Attestor</p>
-  <h2>The half a contract can't do alone</h2>
-  <p class="lede">A clock knows the calendar. It does not know that a market holiday cancelled
-  today's session, or that something happened overnight that makes Friday's close a bad estimate.
-  The agent supplies both, and the contract fails closed to zero confidence if the agent stops
-  reporting.</p>
+<!-- ===================== AGENT ===================== -->
+<section class="view" id="v-agent"><div class="shell">
+  <div class="headrow">
+    <div><p class="greet">Attestor</p><h1>The half a contract<br>can't do alone</h1></div>
+  </div>
 
-  <div class="split">
-    <div class="card">
+  <div class="grid2">
+    <div class="panel pad">
       <h3>Live observation</h3>
-      <div class="log" id="agentLog"><div class="t">waiting for first cycle…</div></div>
-      <p class="note">Status: <span id="connState">connecting</span> · refreshes every 30s</p>
+      <p class="sub">Each cycle, against real chain state.</p>
+      <div class="log" id="agentLog" style="margin-top:16px"><div class="t">waiting for first cycle…</div></div>
     </div>
-    <div class="card">
+    <div class="panel pad">
       <h3>Your position</h3>
-      <p style="color:var(--mute);font-size:14.5px;margin:0 0 16px;line-height:1.55">
-      Connect to read your real Stock Token balances on chain 4663 and price them against the
-      same feeds. Read-only — nothing is signed.</p>
-      <div id="holdings"></div>
+      <p class="sub">Read-only. Nothing is ever signed.</p>
+      <div id="holdings" style="margin-top:14px"></div>
       <p class="note" id="walletNote">Not connected.</p>
-    </div>
-
-    <div class="card">
-      <h3>How session state is derived</h3>
-      <p style="color:var(--mute);font-size:14.5px;line-height:1.6">A hardcoded holiday calendar
-      rots within a year. Instead the agent cross-checks a New York clock against what the feeds
-      are actually doing. If the calendar claims a trading session but every feed has been silent
-      for two hours, the market is closed — holiday, outage, it doesn't matter. Same handling,
-      no maintenance.</p>
-      <div class="kv"><span class="k">Attestation TTL</span><span class="v">30 min</span></div>
-      <div class="kv"><span class="k">On agent outage</span><span class="v" style="color:var(--coral)">confidence → 0</span></div>
-      <div class="kv"><span class="k">Event research</span><span class="v">web search → Claude</span></div>
-      <div class="kv"><span class="k">Output</span><span class="v">attest(session, haircutBps)</span></div>
+      <div style="margin-top:18px">
+        <div class="kv"><span class="k">Attestation TTL</span><span class="v">30 min</span></div>
+        <div class="kv"><span class="k">On agent outage</span><span class="v" style="color:var(--red)">confidence → 0</span></div>
+        <div class="kv"><span class="k">Event research</span><span class="v">web search → Claude</span></div>
+        <div class="kv"><span class="k">Output</span><span class="v">attest(session, bps)</span></div>
+      </div>
     </div>
   </div>
 
-  <div class="rule"></div>
-  <p class="eyebrow">Measured on mainnet</p>
-  <h2>The evidence</h2>
-  <p class="lede">Sunday 20 September 2026, 14:53 UTC. Every feed on the chain, simultaneously
-  unusable by the chain's own documented standard.</p>
-  <div class="card" style="margin-top:26px">
-    <div class="log" style="max-height:none">
+  <div class="panel pad" style="margin-top:13px">
+    <h3>Measured on mainnet</h3>
+    <p class="sub">Sunday 20 September 2026, 14:53 UTC. Every feed on the chain, unusable at once.</p>
+    <div class="log" style="max-height:none;margin-top:16px">
 <div>heartbeat (s): 86400</div>
-<div>---</div>
-<div>GOOGL   $350.47    age 42h    past heartbeat: <span class="bad">true</span></div>
-<div>QQQ     $720.37    age 43h    past heartbeat: <span class="bad">true</span></div>
-<div>TSM     $434.26    age 42h    past heartbeat: <span class="bad">true</span></div>
-<div>SGOV    $101.11    age 38h    past heartbeat: <span class="bad">true</span></div>
-<div>EWY     $180.93    age 43h    past heartbeat: <span class="bad">true</span></div>
-<div>---</div>
+<div>GOOGL  $350.47   age 42h   past heartbeat: <span class="bad">true</span></div>
+<div>QQQ    $720.37   age 43h   past heartbeat: <span class="bad">true</span></div>
+<div>TSM    $434.26   age 42h   past heartbeat: <span class="bad">true</span></div>
+<div>SGOV   $101.11   age 38h   past heartbeat: <span class="bad">true</span></div>
+<div>EWY    $180.93   age 43h   past heartbeat: <span class="bad">true</span></div>
 <div>stale feeds: <span class="bad">5 of 5</span></div>
 <div> </div>
 <div>naive heartbeat check → <span class="bad">REJECT, protocol halts</span></div>
@@ -315,10 +238,10 @@
   </div>
 </div></section>
 
-<footer><div class="wrap">
-  Built for the Arbitrum Open House Singapore Buildathon ·
-  <a href="https://github.com/DannyTrillion/nightdesk">Source on GitHub</a> ·
-  Reads are unauthenticated calls to rpc.mainnet.chain.robinhood.com
+<footer><div class="shell">
+  Arbitrum Open House Singapore Buildathon ·
+  <a href="https://github.com/DannyTrillion/nightdesk" style="color:var(--gold)">Source</a> ·
+  reads are unauthenticated calls to rpc.mainnet.chain.robinhood.com
 </div></footer>
 
 <script src="app.js"></script>

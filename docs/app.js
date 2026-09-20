@@ -1,74 +1,44 @@
-/* NightDesk webapp. Reads Robinhood Chain mainnet directly; no backend. */
+/* NightDesk — reads Robinhood Chain mainnet directly. No backend. */
 
 const RPC = "https://rpc.mainnet.chain.robinhood.com";
-const CHAIN_ID = 4663;
+const CHAIN_ID = 4663, CHAIN_HEX = "0x" + (4663).toString(16);
 const HEARTBEAT = 86400;
 const DECAY = {Open:3600, PreMarket:21600, PostMarket:21600, Closed:259200, Overnight:259200, Unknown:0};
-
-// Contract constants, mirrored from NightDeskLending.sol.
 const BASE_LTV = 7000, LIQ_LTV = 8500, MIN_BORROW = 2000, MIN_LIQ = 5000, BPS = 10000;
 
-// Stock Token contracts on chain 4663, from the live asset registry.
-const TOKENS = {
-  GOOGL:"0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
-  QQQ:  "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
-  TSM:  "0x58FfE4a942d3885bAa22D7520691F611EF09e7AA",
-  SGOV: "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
-  EWY:  "0x7f0aBeF0C07280F82c6a08ead09dEd6BAE2C13Fc",
-};
-const SEL_BALANCE = "0x70a08231";  // balanceOf(address)
-
 const FEEDS = [
-  {t:"GOOGL", name:"Alphabet",            a:"0xF6f373a037c30F0e5010d854385cA89185AE638b"},
-  {t:"QQQ",   name:"Invesco QQQ",         a:"0x80901d846d5D7B030F26B480776EE3b29374C2ae"},
-  {t:"TSM",   name:"Taiwan Semiconductor",a:"0x874cF94aa8eC88Fd9560094dD065f2fB3E41Fc2F"},
-  {t:"SGOV",  name:"iShares 0-3M Treasury",a:"0xa0DF4ee0fFf975306345875E3548Fcc519577A11"},
-  {t:"EWY",   name:"MSCI South Korea",    a:"0xEFdf54610B62A7753Ec30bDc380847c12D32e1D1"},
+  {t:"GOOGL", name:"Alphabet Class A",        feed:"0xF6f373a037c30F0e5010d854385cA89185AE638b", token:"0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"},
+  {t:"QQQ",   name:"Invesco QQQ Trust",       feed:"0x80901d846d5D7B030F26B480776EE3b29374C2ae", token:"0xD5f3879160bc7c32ebb4dC785F8a4F505888de68"},
+  {t:"TSM",   name:"Taiwan Semiconductor",    feed:"0x874cF94aa8eC88Fd9560094dD065f2fB3E41Fc2F", token:"0x58FfE4a942d3885bAa22D7520691F611EF09e7AA"},
+  {t:"SGOV",  name:"iShares 0-3M Treasury",   feed:"0xa0DF4ee0fFf975306345875E3548Fcc519577A11", token:"0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5"},
+  {t:"EWY",   name:"iShares MSCI South Korea",feed:"0xEFdf54610B62A7753Ec30bDc380847c12D32e1D1", token:"0x7f0aBeF0C07280F82c6a08ead09dEd6BAE2C13Fc"},
 ];
-const SEL = "0xfeaf968c"; // latestRoundData()
+const SEL_ROUND = "0xfeaf968c", SEL_BAL = "0x70a08231";
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
-let state = {
-  feeds:[], block:0, session:"Unknown", lastOk:0,
-  collateral:35000, asset:"GOOGL",
-  anchor:0,              // unix seconds of the last real print - the time machine's origin
-  offsetH:0,             // hours forward from the anchor
-  wallet:null, holdings:[], usingWallet:false,
+let S = {
+  feeds:[], block:0, session:"Unknown", anchor:0, seeded:false,
+  sel:"GOOGL", offsetH:0, haircut:0, collateral:35000, borrowPct:0,
+  machineOn:false, range:7, wallet:null, holdings:[],
 };
 
 /* ---------------- motion ---------------- */
-const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const easeOutExpo = t => t===1 ? 1 : 1 - Math.pow(2, -10*t);
-
-/* Tweens an element's number so a value change is felt rather than just seen. */
-function tween(el, to, fmt, dur=620){
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ease = t => t===1 ? 1 : 1 - Math.pow(2,-10*t);
+function tween(el, to, fmt, dur=600){
   if(!el) return;
-  const from = el._tv ?? to;
-  el._tv = to;
-  if(REDUCED || from === to){ el.textContent = fmt(to); return; }
+  const from = el._tv ?? to; el._tv = to;
+  if(REDUCED || from===to){ el.textContent = fmt(to); return; }
   cancelAnimationFrame(el._raf);
   const t0 = performance.now();
-  const step = now => {
-    const p = Math.min(1,(now-t0)/dur);
-    el.textContent = fmt(from + (to-from)*easeOutExpo(p));
+  const step = n => {
+    const p = Math.min(1,(n-t0)/dur);
+    el.textContent = fmt(from + (to-from)*ease(p));
     if(p<1) el._raf = requestAnimationFrame(step);
   };
   el._raf = requestAnimationFrame(step);
-}
-
-/* Confidence ring: circumference 2*pi*52 ~= 326.7 */
-const RING_C = 326.7;
-function setRing(bps){
-  const ring = $("#ringFill"), lbl = $("#ringVal");
-  if(!ring) return;
-  ring.style.strokeDashoffset = RING_C * (1 - bps/BPS);
-  ring.style.stroke = confColor(bps);
-  tween(lbl, bps, v => Math.round(v));
-  $("#ringSub").textContent = bps === 0 ? "no usable price"
-    : bps < MIN_BORROW ? "below borrow floor"
-    : bps < MIN_LIQ ? "borrow only" : "fully actionable";
 }
 
 /* ---------------- chain ---------------- */
@@ -81,412 +51,404 @@ async function rpc(method, params){
 }
 function decodeRound(hex){
   const w = hex.slice(2).match(/.{64}/g);
-  let answer = BigInt("0x"+w[1]);
-  if(answer >> 255n) answer -= 1n << 256n;          // int256
-  return {price:Number(answer)/1e8, updatedAt:Number(BigInt("0x"+w[3]))};
+  let a = BigInt("0x"+w[1]);
+  if(a >> 255n) a -= 1n << 256n;
+  return {price:Number(a)/1e8, updatedAt:Number(BigInt("0x"+w[3]))};
 }
 
-/* ---------------- wallet ---------------- */
-const CHAIN_HEX = "0x" + CHAIN_ID.toString(16);   // 0x1237
-
-function short(a){ return a.slice(0,6)+"…"+a.slice(-4); }
-
-async function ensureChain(){
-  try{
-    await window.ethereum.request({method:"wallet_switchEthereumChain",
-      params:[{chainId:CHAIN_HEX}]});
-  }catch(e){
-    // 4902 = chain unknown to the wallet; add it, then the switch sticks.
-    if(e.code === 4902){
-      await window.ethereum.request({method:"wallet_addEthereumChain", params:[{
-        chainId:CHAIN_HEX, chainName:"Robinhood Chain",
-        nativeCurrency:{name:"Ether",symbol:"ETH",decimals:18},
-        rpcUrls:[RPC], blockExplorerUrls:["https://robinhoodchain.blockscout.com"],
-      }]});
-    } else throw e;
-  }
-}
-
-async function connectWallet(){
-  const btn = $("#connectBtn");
-  if(!window.ethereum){
-    walletNote("No injected wallet found. Install MetaMask or Rabby to load real balances.", true);
-    return;
-  }
-  try{
-    btn.disabled = true; btn.textContent = "Connecting…";
-    const accts = await window.ethereum.request({method:"eth_requestAccounts"});
-    await ensureChain();
-    state.wallet = accts[0];
-    btn.textContent = short(state.wallet);
-    walletNote("Reading Stock Token balances…");
-    await loadHoldings();
-  }catch(e){
-    walletNote(e.message || "Connection rejected.", true);
-    btn.textContent = "Connect wallet";
-  }finally{
-    btn.disabled = false;
-  }
-}
-
-function walletNote(msg, bad){
-  const el = $("#walletNote");
-  el.textContent = msg;
-  el.style.color = bad ? "var(--coral)" : "var(--mute)";
-}
-
-/* Reads balanceOf for each tracked Stock Token. The Chainlink price already
-   includes the corporate-action multiplier, so it is never applied twice. */
-async function loadHoldings(){
-  const pad = a => "000000000000000000000000" + a.slice(2).toLowerCase();
-  const out = [];
-  for(const f of FEEDS){
-    const token = TOKENS[f.t];
-    if(!token) continue;
-    try{
-      const raw = await rpc("eth_call",[{to:token, data:SEL_BALANCE + pad(state.wallet)},"latest"]);
-      const bal = Number(BigInt(raw)) / 1e18;
-      if(bal > 0) out.push({ticker:f.t, token, balance:bal});
-    }catch(_){ /* a token that does not answer is simply not held */ }
-  }
-  state.holdings = out;
-  renderHoldings();
-}
-
-function renderHoldings(){
-  const box = $("#holdings");
-  if(!state.wallet){ return; }
-  if(!state.holdings.length){
-    box.innerHTML = `<p style="color:var(--mute);font-size:14px;margin:0">
-      No Stock Token balances at ${short(state.wallet)} on Robinhood Chain.
-      The simulator below stays on its preset collateral.</p>`;
-    walletNote(`Connected · ${short(state.wallet)} · no Stock Tokens held`);
-    return;
-  }
-  const priceOf = t => (state.feeds.find(f=>f.t===t)||{}).price || 0;
-  const total = state.holdings.reduce((s,h)=> s + h.balance*priceOf(h.ticker), 0);
-
-  box.innerHTML = state.holdings.map(h=>`
-    <div class="kv"><span class="k">${h.ticker}
-      <span style="color:var(--faint)">· ${h.balance.toFixed(4)}</span></span>
-      <span class="v">${usd(h.balance*priceOf(h.ticker))}</span></div>`).join("")
-    + `<div class="kv" style="border-top:1px solid var(--line);margin-top:6px;padding-top:12px">
-        <span class="k" style="color:var(--cream)">Portfolio</span>
-        <span class="v" style="color:var(--sage)">${usd(total)}</span></div>
-       <button class="btn ghost" id="useHoldings" style="width:100%;margin-top:14px">
-        Use ${usd(total)} as collateral</button>`;
-
-  walletNote(`Connected · ${short(state.wallet)} · ${state.holdings.length} position${state.holdings.length>1?"s":""}`);
-  $("#useHoldings").addEventListener("click", ()=>{
-    state.collateral = Math.round(total);
-    state.usingWallet = true;
-    $("#collateralSel").insertAdjacentHTML("afterbegin",
-      `<option value="${Math.round(total)}" selected>${usd(total)} — your wallet</option>`);
-    $("#collateralSel").value = String(Math.round(total));
-    location.hash = "#position";
-    sim();
-  });
-}
-
-/* ---------------- session ---------------- */
-function sessionAt(d=new Date()){
+/* ---------------- session + confidence ---------------- */
+function nyFmt(d, opts){ return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",...opts}).format(d); }
+function nyParts(d=new Date()){
   const p = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",
     minute:"numeric",weekday:"short",hour12:false}).formatToParts(d);
   const g = t => p.find(x=>x.type===t).value;
-  const wd = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(g("weekday"));
-  const m = (Number(g("hour"))%24)*60 + Number(g("minute"));
+  return {wd:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(g("weekday")),
+          h:Number(g("hour"))%24, m:Number(g("minute"))};
+}
+function sessionAt(d=new Date()){
+  const {wd,h,m} = nyParts(d), mins = h*60+m;
   if(wd===0||wd===6) return "Closed";
-  if(m>=240 && m<570)  return "PreMarket";
-  if(m>=570 && m<960)  return "Open";
-  if(m>=960 && m<1200) return "PostMarket";
+  if(mins>=240 && mins<570)  return "PreMarket";
+  if(mins>=570 && mins<960)  return "Open";
+  if(mins>=960 && mins<1200) return "PostMarket";
   return "Overnight";
 }
-function nyParts(d=new Date()){
-  const p = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",
-    weekday:"short",hour12:false}).formatToParts(d);
-  const g=t=>p.find(x=>x.type===t).value;
-  return {wd:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(g("weekday")), h:Number(g("hour"))%24};
-}
-
 /* Mirrors MarketStateOracle._confidence exactly. */
-function confidence(ageSec, session, haircutBps=0){
+function confidence(age, session, haircut=0){
   if(session==="Unknown") return 0;
   const w = DECAY[session];
-  if(ageSec >= w) return 0;
-  const base = BPS - Math.floor((ageSec*BPS)/w);
-  const hair = session==="Open" ? 0 : haircutBps;
-  return Math.floor((base*(BPS-hair))/BPS);
+  if(age >= w) return 0;
+  const base = BPS - Math.floor((age*BPS)/w);
+  return Math.floor((base*(BPS-(session==="Open"?0:haircut)))/BPS);
 }
 
-/* ---------------- format ---------------- */
 const usd = n => "$"+Math.round(n).toLocaleString("en-US");
 const fmtAge = s => s<3600 ? `${Math.round(s/60)}m` : s<172800 ? `${(s/3600).toFixed(1)}h` : `${(s/86400).toFixed(1)}d`;
-function confColor(b){ return b>6000?"var(--sage)":b>2000?"var(--amber)":"var(--coral)"; }
+const cColor = b => b>6000 ? "var(--green)" : b>2000 ? "var(--gold)" : "var(--red)";
+const short = a => a.slice(0,6)+"…"+a.slice(-4);
 
-/* ---------------- router ---------------- */
-function route(){
-  const v = (location.hash.slice(1) || "overview");
-  $$(".view").forEach(el => el.classList.toggle("on", el.id === "v-"+v));
-  $$("nav.tabs a").forEach(a => a.classList.toggle("on", a.dataset.v === v));
-  window.scrollTo({top:0,behavior:"instant"});
+/* ---------------- sparklines ---------------- */
+/* Real curves, not decoration: what confidence would have scored each hour
+   across the window, given market hours and the decay model. */
+function sparkPath(vals, w=190, h=34){
+  const max = Math.max(...vals,1), min = Math.min(...vals,0);
+  const span = (max-min)||1;
+  return vals.map((v,i)=>{
+    const x = (i/(vals.length-1))*w;
+    const y = h - ((v-min)/span)*(h-4) - 2;
+    return `${i?"L":"M"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
 }
-window.addEventListener("hashchange", route);
-
-/* ---------------- render ---------------- */
-/* Opening beat: the live numbers count up as soon as the chain answers, so the
-   first thing a visitor sees is the gap measuring itself. */
-function landing(){
-  const rows = state.feeds;
-  const stale = rows.filter(r=>r.stale).length;
-  const oldest = Math.max(...rows.map(r=>r.age));
-  tween($("#coverage"), 19.3, v=>v.toFixed(1), 900);
-  tween($("#oldest"), oldest/3600, v=>v.toFixed(1)+"h", 1100);
-  const el = $("#staleCount");
-  el._tv = 0;
-  tween(el, stale, v=>`${Math.round(v)}/${rows.length}`, 850);
-}
-
-function renderStats(){
-  const rows = state.feeds;
-  if(!rows.length) return;
-  const stale = rows.filter(r=>r.stale).length;
-  const oldest = Math.max(...rows.map(r=>r.age));
-
-  if(state.seeded){ $("#staleCount").textContent = `${stale}/${rows.length}`; }
-  $("#staleCount").className = "v " + (stale ? "coral":"sage");
-  $("#staleSub").textContent = stale===rows.length
-    ? "every feed unusable by the documented rule"
-    : stale ? "past the 24h heartbeat" : "all feeds within heartbeat";
-  if(state.seeded) $("#oldest").textContent = fmtAge(oldest);
-  $("#sessionV").textContent = state.session;
-  $("#sessionV").className = "v " + (state.session==="Open" ? "sage":"");
-  $("#orb").className = "orb " + (stale ? "" : "fresh");
-}
-
-function renderTable(){
-  const tb = $("#feedRows");
-  if(!state.feeds.length){ return; }
-  tb.innerHTML = state.feeds.map(r=>{
-    const c = confidence(r.age, state.session);
-    return `<tr>
-      <td><div class="tk">${r.t}</div><div style="font-size:12.5px;color:var(--faint)">${r.name}</div></td>
-      <td class="mono">$${r.price.toFixed(2)}</td>
-      <td class="mono">${fmtAge(r.age)}</td>
-      <td><div class="confrow">
-        <div class="bar"><i style="width:${c/100}%;background:${confColor(c)}"></i></div>
-        <span class="n">${c}</span></div></td>
-      <td><span class="pill ${r.stale?'stale':'ok'}"><i></i>${r.stale?'STALE':'LIVE'}</span></td>
-    </tr>`;
+function sparkBars(vals, w=190, h=34){
+  const max = Math.max(...vals,1);
+  const bw = w/vals.length;
+  return vals.map((v,i)=>{
+    const bh = Math.max(1.5,(v/max)*(h-3));
+    return `<rect x="${(i*bw).toFixed(1)}" y="${(h-bh).toFixed(1)}" width="${(bw*.62).toFixed(1)}"
+      height="${bh.toFixed(1)}" rx="1" fill="currentColor" opacity="${.35+.55*(v/max)}"/>`;
   }).join("");
 }
+function confidenceHistory(hours){
+  // Walk backwards hour by hour; at each point compute what the last print's
+  // age would have been and score it under that hour's session.
+  const out = [], now = Date.now();
+  for(let i=hours; i>=0; i--){
+    const t = new Date(now - i*3600*1000);
+    const sess = sessionAt(t);
+    // Age since the most recent close preceding t.
+    let age = 0, probe = new Date(t);
+    for(let k=0;k<200;k++){
+      if(sessionAt(probe)==="Open") break;
+      probe = new Date(probe.getTime() - 3600*1000); age += 3600;
+    }
+    out.push(confidence(age, sess));
+  }
+  return out;
+}
 
+/* ---------------- tiles ---------------- */
+function renderTiles(){
+  const rows = S.feeds; if(!rows.length) return;
+  const stale = rows.filter(r=>r.stale).length;
+  const oldest = Math.max(...rows.map(r=>r.age));
+  const hrs = S.range===7 ? 168 : 24;
+  const hist = confidenceHistory(hrs);
+  const openHrs = S.range===7 ? 32.5 : (sessionAt()==="Closed"?0:6.5);
+  const cov = (openHrs/(S.range===7?168:24))*100;
+
+  const tiles = [
+    {k:"Live price coverage", v:cov.toFixed(1), unit:"%", cls:"warn",
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">${sparkBars(hist.filter((_,i)=>i%(S.range===7?7:1)===0))}</svg>`},
+    {k:"Feeds past heartbeat", v:`${stale}/${rows.length}`, unit:"", cls:stale?"bad":"good",
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:${stale?'var(--red)':'var(--green)'}">
+       <path d="${sparkPath(rows.map(r=>r.stale?1:0.08))}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`},
+    {k:"Oldest price on chain", v:(oldest/3600).toFixed(1), unit:"h", cls:oldest>HEARTBEAT?"bad":"good",
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">
+       <path d="${sparkPath(rows.map(r=>r.age))}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`},
+    {k:"Market session", v:S.session, unit:"", cls:S.session==="Open"?"good":"warn",
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">${sparkBars(hist.slice(-24).map(v=>v/100+1))}</svg>`},
+  ];
+  $("#statTiles").innerHTML = tiles.map(t=>`
+    <div class="tile ${t.cls}">
+      <div class="k">${t.k}</div>
+      <div class="v">${t.v}${t.unit?`<small>${t.unit}</small>`:""}</div>
+      ${t.spark}
+    </div>`).join("");
+}
+
+/* ---------------- asset list ---------------- */
+function renderList(){
+  if(!S.feeds.length) return;
+  $("#assetCount").textContent = `${S.feeds.length} tracked`;
+  $("#assetList").innerHTML = S.feeds.map(f=>{
+    const c = confidence(f.age, S.session);
+    return `<button class="acard ${f.t===S.sel?"on":""}" data-t="${f.t}">
+      <div class="av">${f.t.slice(0,2)}</div>
+      <div class="meta"><div class="tkr">${f.t}</div><div class="nm">${f.name}</div></div>
+      <div class="rt"><div class="px">$${f.price.toFixed(2)}</div>
+        <div class="cf" style="color:${cColor(c)}">${c} bps</div></div>
+    </button>`;
+  }).join("");
+  $$(".acard").forEach(b => b.addEventListener("click", ()=>{
+    S.sel = b.dataset.t; renderList(); sim();
+  }));
+}
+
+/* ---------------- detail + simulation ---------------- */
+function selected(){ return S.feeds.find(f=>f.t===S.sel) || S.feeds[0]; }
+
+function machineTime(){
+  const f = selected();
+  const anchor = S.anchor || Math.floor(Date.now()/1000);
+  if(!S.machineOn) return {date:new Date(), age:f?f.age:0, session:S.session};
+  const t = anchor + S.offsetH*3600;
+  const d = new Date(t*1000);
+  return {date:d, age:S.offsetH*3600, session:sessionAt(d)};
+}
+
+function sim(){
+  const f = selected(); if(!f) return;
+  const {date, age, session} = machineTime();
+  const conf = confidence(age, session, S.haircut);
+
+  // hero
+  $("#ringFill").style.strokeDashoffset = 452.4*(1-conf/BPS);
+  $("#ringFill").style.stroke = cColor(conf);
+  tween($("#ringVal"), conf, v=>Math.round(v));
+  $("#dPrice").textContent = "$"+f.price.toFixed(2);
+  $("#dTagTxt").textContent = `${f.t} · ${session.toUpperCase()}`;
+  $("#dTag").style.color = session==="Open" ? "var(--green)" : session==="Closed" ? "var(--red)" : "var(--gold)";
+  $("#dCap").textContent = f.name + " — " + (conf===0
+    ? "no usable price right now."
+    : conf<MIN_BORROW ? "priced, but under the borrow floor."
+    : "priced with a confidence haircut.");
+
+  // specs
+  $("#sAge").textContent = fmtAge(age);
+  $("#sSession").textContent = session;
+  $("#sWindow").textContent = DECAY[session] ? fmtAge(DECAY[session]) : "—";
+  $("#sPrint").textContent = nyFmt(new Date(f.updatedAt*1000),{weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false});
+  $("#machineWhen").textContent = S.machineOn
+    ? nyFmt(date,{weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false})+" NY · simulated"
+    : "walks forward from the last real print";
+
+  // heat cursor
+  const {wd,h} = nyParts(date);
+  $$("#week .cell").forEach(c=>c.classList.remove("now"));
+  const cell = $(`#week .cell[data-d="${wd}"][data-h="${h}"]`);
+  if(cell) cell.classList.add("now");
+
+  // capacities
+  const naive = age > HEARTBEAT ? 0 : S.collateral*(BASE_LTV/BPS);
+  const nd = S.collateral*(BASE_LTV/BPS)*(conf/BPS);
+  const debt = S.collateral*(BASE_LTV/BPS)*(S.borrowPct/100);
+
+  tween($("#naiveCap"), naive, usd);
+  tween($("#ndCap"), nd, usd);
+  tween($("#borrowOut"), debt, usd);
+  tween($("#collOut"), S.collateral, usd);
+  $("#ageOut").textContent = S.machineOn ? S.offsetH+"h" : fmtAge(age);
+  $("#haircutOut").textContent = S.haircut+" bps";
+  $("#naiveCap").style.color = naive ? "var(--ink)" : "var(--red)";
+  $("#ndCap").style.color = nd ? "var(--gold)" : "var(--red)";
+
+  $("#naiveVerdict").textContent = age > HEARTBEAT
+    ? "Price rejected past the heartbeat. Protocol halted — the borrower is locked out."
+    : age < 60 ? "Operating normally on a fresh print."
+    : `Lending against a ${fmtAge(age)}-old price as though it were current. No haircut.`;
+
+  const reopened = conf===0 && age < DECAY.Closed &&
+    ["PreMarket","Open","PostMarket"].includes(session);
+  $("#ndVerdict").textContent = reopened
+    ? `${session} has begun — discovery is resuming, so a ${fmtAge(age)}-old close stops being the best estimate. Confidence drops on purpose, exactly when the information changes.`
+    : conf===0 ? "Confidence exhausted. The price is genuinely worthless now, and we say so."
+    : conf < MIN_BORROW ? `${conf} bps — under the ${MIN_BORROW} bps floor. Existing loans stand; no new debt.`
+    : `${conf} bps in a ${session} session. Open at an honest haircut.`;
+
+  // health
+  const adj = S.collateral*(conf/BPS);
+  const ltv = adj>0 ? Math.round((debt*BPS)/adj) : (debt>0 ? BPS*2 : 0);
+  $("#healthFill").style.width = Math.min(100,(ltv/LIQ_LTV)*100)+"%";
+  $("#healthFill").style.background = ltv>=LIQ_LTV ? "var(--red)" : ltv>LIQ_LTV*.7 ? "var(--gold)" : "var(--green)";
+  $("#ltvOut").textContent = adj>0 ? (ltv/100).toFixed(1)+"%" : (debt>0?"∞":"—");
+
+  const canB = conf>=MIN_BORROW, canL = conf>=MIN_LIQ, bad = ltv>=LIQ_LTV;
+  $("#gBorrow").textContent = canB ? "PERMITTED" : "BLOCKED";
+  $("#gBorrow").style.color = canB ? "var(--green)" : "var(--red)";
+  $("#gLiq").textContent = !bad ? "N/A" : canL ? "PERMITTED" : "BLOCKED";
+  $("#gLiq").style.color = !bad ? "var(--faint)" : canL ? "var(--gold)" : "var(--green)";
+  $("#borrowBtn").disabled = !canB;
+
+  $("#gSummary").textContent = !bad
+    ? (canB ? "Position is healthy and the price is good enough to lend against."
+            : "Position is healthy, but confidence is under the borrow floor — the loan stands, no new debt.")
+    : !canL
+      ? `Underwater on paper at ${(ltv/100).toFixed(0)}% LTV, but confidence is only ${conf} bps — under the ${MIN_LIQ} bps bar. Nobody can verify the price that says this borrower is insolvent, so the collateral stays put until the market reopens.`
+      : `Underwater at ${(ltv/100).toFixed(0)}% LTV with ${conf} bps confidence, at or above the ${MIN_LIQ} bps bar. The price is trustworthy enough to act on, so liquidation proceeds.`;
+}
+
+/* ---------------- week heat ---------------- */
 function buildWeek(){
-  const wrap = $("#week");
-  const {wd:nowD, h:nowH} = nyParts();
+  const wrap = $("#week"); if(!wrap) return;
   const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  let html = '<div></div>' + days.map(d=>`<div class="hd">${d}</div>`).join("");
-
-  for(let h=0; h<24; h++){
-    // Label every sixth hour so the axis reads without crowding.
-    html += `<div class="hr">${h%6===0 ? String(h).padStart(2,"0")+":00" : ""}</div>`;
-    for(let d=0; d<7; d++){
-      const open = d>=1 && d<=5 && h>=9 && h<16;   // 09:30-16:00 ET cash session
-      const now  = d===nowD && h===nowH;
-      html += `<div class="cell${open?" open":""}${now?" now":""}" data-d="${d}" data-h="${h}"></div>`;
+  let html = "<div></div>" + days.map(d=>`<div class="hd">${d}</div>`).join("");
+  for(let h=0;h<24;h++){
+    html += `<div class="hr">${h%6===0 ? String(h).padStart(2,"0") : ""}</div>`;
+    for(let d=0;d<7;d++){
+      const open = d>=1 && d<=5 && h>=9 && h<16;
+      html += `<div class="cell${open?" open":""}" data-d="${d}" data-h="${h}"></div>`;
     }
   }
   wrap.innerHTML = html;
 }
 
-/* ---------------- position builder + time machine ---------------- */
-
-/* The slider is wall-clock time, not an abstract age. It starts at the last
-   real print on chain and walks forward, so the session changes underneath you
-   exactly as it would in life: Friday close, the long weekend, Monday's open. */
-function machineTime(){
-  const anchor = state.anchor || Math.floor(Date.now()/1000);
-  const t = anchor + state.offsetH*3600;
-  return {t, date:new Date(t*1000), age:state.offsetH*3600};
-}
-
-function renderMachineLabel(date, session){
-  const f = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",
-    hour:"2-digit",minute:"2-digit",hour12:false});
-  $("#machineWhen").textContent = f.format(date) + " NY";
-  $("#machineSession").textContent = session;
-  $("#machineSession").style.color =
-    session==="Open" ? "var(--sage)" : session==="Closed" ? "var(--coral)" : "var(--amber)";
-  // Move the heatmap cursor to wherever the machine is pointing.
-  const {wd,h} = nyParts(date);
-  $$("#week .cell").forEach(c=>c.classList.remove("now"));
-  const cell = $(`#week .cell[data-d="${wd}"][data-h="${h}"]`);
-  if(cell) cell.classList.add("now");
-}
-
-function sim(){
-  state.offsetH = Number($("#ageSlider").value);
-  const haircut = Number($("#haircutSlider").value);
-  const borrowPct = Number($("#borrowSlider").value);
-  const {date, age} = machineTime();
-  const session = state.anchor ? sessionAt(date) : "Closed";
-  const collateral = state.collateral;
-
-  $("#ageOut").textContent = state.offsetH + "h";
-  $("#haircutOut").textContent = haircut + " bps";
-  renderMachineLabel(date, session);
-
-  const conf = confidence(age, session, haircut);
-  setRing(conf);
-
-  const naiveCap = age > HEARTBEAT ? 0 : collateral*(BASE_LTV/BPS);
-  const ndCap = collateral*(BASE_LTV/BPS)*(conf/BPS);
-  const debt = collateral*(BASE_LTV/BPS)*(borrowPct/100);
-
-  tween($("#borrowOut"), debt, usd);
-  tween($("#naiveCap"), naiveCap, usd);
-  tween($("#ndCap"), ndCap, usd);
-  $("#naiveCap").style.color = naiveCap ? "var(--cream)" : "var(--coral)";
-  $("#ndCap").style.color = ndCap ? "var(--sage)" : "var(--coral)";
-
-  $("#naiveVerdict").textContent = age > HEARTBEAT
-    ? "Price rejected past the heartbeat. Protocol halted — the borrower is locked out."
-    : state.offsetH===0 ? "Operating normally on the last real print."
-    : `Lending against a ${state.offsetH}h-old price as though it were current. No haircut.`;
-
-  // A zero can arrive two ways, and they mean different things. Time simply
-  // running out is decay. The session reopening is new information arriving -
-  // the old print stops being the best estimate the moment discovery resumes.
-  const reopened = conf===0 && age < DECAY.Closed &&
-    (session==="PreMarket" || session==="Open" || session==="PostMarket");
-  $("#ndVerdict").textContent = reopened
-    ? `${session} has begun — real price discovery is resuming, so a ${state.offsetH}h-old close is no longer the best estimate. Confidence drops on purpose, at the moment the information changes.`
-    : conf===0
-      ? "Confidence exhausted. The price is genuinely worthless now, and we say so."
-      : conf < MIN_BORROW
-        ? `${conf} bps — under the ${MIN_BORROW} bps borrow floor. Existing loans stand; no new debt.`
-        : `${conf} bps confidence in a ${session} session. Open at an honest haircut.`;
-
-  const adjValue = collateral*(conf/BPS);
-  const ltv = adjValue>0 ? Math.round((debt*BPS)/adjValue) : (debt>0 ? BPS*2 : 0);
-  const pct = Math.min(100,(ltv/LIQ_LTV)*100);
-  $("#healthFill").style.width = pct+"%";
-  $("#healthFill").style.background =
-    ltv>=LIQ_LTV ? "var(--coral)" : ltv>LIQ_LTV*.7 ? "var(--amber)" : "var(--sage)";
-  $("#ltvOut").textContent = adjValue>0 ? (ltv/100).toFixed(1)+"%" : (debt>0 ? "∞" : "—");
-
-  const canBorrow = conf >= MIN_BORROW, canLiq = conf >= MIN_LIQ, unhealthy = ltv >= LIQ_LTV;
-
-  $("#gBorrow").textContent = canBorrow ? "PERMITTED" : "BLOCKED";
-  $("#gBorrow").style.color = canBorrow ? "var(--sage)" : "var(--coral)";
-  $("#gLiq").textContent = !unhealthy ? "N/A — POSITION HEALTHY"
-    : canLiq ? "PERMITTED" : "BLOCKED — PRICE UNVERIFIABLE";
-  $("#gLiq").style.color = !unhealthy ? "var(--faint)" : canLiq ? "var(--amber)" : "var(--sage)";
-
-  $("#gSummary").textContent = !unhealthy
-    ? (canBorrow
-        ? "Position is healthy and the price is good enough to lend against."
-        : "Position is healthy, but confidence is under the borrow floor — the loan stands, no new debt.")
-    : !canLiq
-      ? `Underwater on paper at ${(ltv/100).toFixed(0)}% LTV, but confidence is only ${conf} bps — under the ${MIN_LIQ} bps bar. Nobody can verify the price that says this borrower is insolvent, so the collateral stays put until the market reopens.`
-      : `Underwater at ${(ltv/100).toFixed(0)}% LTV and confidence is ${conf} bps, at or above the ${MIN_LIQ} bps bar. The price is trustworthy enough to act on, so liquidation proceeds.`;
-}
-
 /* ---------------- agent log ---------------- */
 function agentLog(){
-  const el = $("#agentLog");
-  if(!state.feeds.length) return;
+  if(!S.feeds.length) return;
   const t = new Date().toLocaleTimeString("en-US",{hour12:false});
-  const oldest = Math.max(...state.feeds.map(r=>r.age));
-  const stale = state.feeds.filter(r=>r.stale).length;
-  const conf = confidence(oldest, state.session);
-  const lines = [
-    `<div><span class="t">${t}</span>  observe  chain ${CHAIN_ID} block ${state.block.toLocaleString("en-US")}</div>`,
-    `<div><span class="t">${t}</span>  sampled  ${state.feeds.length} aggregators</div>`,
-    `<div><span class="t">${t}</span>  median age ${fmtAge(oldest)} · <span class="${stale?'bad':'ok'}">${stale}/${state.feeds.length} past heartbeat</span></div>`,
-    `<div><span class="t">${t}</span>  clock says <span class="ok">${state.session}</span> (America/New_York)</div>`,
-    stale===state.feeds.length && state.session!=="Closed"
-      ? `<div><span class="t">${t}</span>  <span class="warn">override → Closed (feeds quiet during a scheduled session)</span></div>`
+  const oldest = Math.max(...S.feeds.map(r=>r.age));
+  const stale = S.feeds.filter(r=>r.stale).length;
+  const conf = confidence(oldest, S.session);
+  $("#agentLog").innerHTML = [
+    `<div><span class="t">${t}</span>  observe  chain ${CHAIN_ID} block ${S.block.toLocaleString("en-US")}</div>`,
+    `<div><span class="t">${t}</span>  sampled  ${S.feeds.length} aggregators</div>`,
+    `<div><span class="t">${t}</span>  oldest ${fmtAge(oldest)} · <span class="${stale?"bad":"ok"}">${stale}/${S.feeds.length} past heartbeat</span></div>`,
+    `<div><span class="t">${t}</span>  clock says <span class="ok">${S.session}</span> (America/New_York)</div>`,
+    stale===S.feeds.length && S.session!=="Closed"
+      ? `<div><span class="t">${t}</span>  <span class="warn">override → Closed (feeds quiet in a scheduled session)</span></div>`
       : `<div><span class="t">${t}</span>  clock and feed behaviour agree — no override</div>`,
-    `<div><span class="t">${t}</span>  confidence <span class="${conf>2000?'ok':'bad'}">${conf} bps</span></div>`,
-    `<div><span class="t">${t}</span>  next: web search for events since last print → haircut → attest()</div>`,
-  ];
-  el.innerHTML = lines.join("");
+    `<div><span class="t">${t}</span>  confidence <span class="${conf>2000?"ok":"bad"}">${conf} bps</span></div>`,
+    `<div><span class="t">${t}</span>  next: search events since last print → haircut → attest()</div>`,
+  ].join("");
+}
+
+/* ---------------- wallet ---------------- */
+async function ensureChain(){
+  try{ await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]}); }
+  catch(e){
+    if(e.code===4902){
+      await ethereum.request({method:"wallet_addEthereumChain",params:[{
+        chainId:CHAIN_HEX, chainName:"Robinhood Chain",
+        nativeCurrency:{name:"Ether",symbol:"ETH",decimals:18},
+        rpcUrls:[RPC], blockExplorerUrls:["https://robinhoodchain.blockscout.com"]}]});
+    } else throw e;
+  }
+}
+async function connectWallet(){
+  const btn = $("#connectBtn");
+  if(!window.ethereum){ wNote("No injected wallet found. Install MetaMask or Rabby.", true); return; }
+  try{
+    btn.disabled = true; btn.textContent = "Connecting…";
+    const a = await ethereum.request({method:"eth_requestAccounts"});
+    await ensureChain();
+    S.wallet = a[0]; btn.textContent = short(S.wallet);
+    wNote("Reading Stock Token balances…"); await loadHoldings();
+  }catch(e){ wNote(e.message||"Connection rejected.", true); btn.textContent = "Connect wallet"; }
+  finally{ btn.disabled = false; }
+}
+function wNote(m,bad){ const e=$("#walletNote"); e.textContent=m; e.style.color = bad?"var(--red)":"var(--faint)"; }
+
+async function loadHoldings(){
+  const pad = a => "000000000000000000000000"+a.slice(2).toLowerCase();
+  const out = [];
+  for(const f of FEEDS){
+    try{
+      const raw = await rpc("eth_call",[{to:f.token,data:SEL_BAL+pad(S.wallet)},"latest"]);
+      const bal = Number(BigInt(raw))/1e18;
+      if(bal>0) out.push({t:f.t, bal});
+    }catch(_){}
+  }
+  S.holdings = out; renderHoldings();
+}
+function renderHoldings(){
+  const box = $("#holdings"); if(!S.wallet) return;
+  if(!S.holdings.length){
+    box.innerHTML = `<p style="color:var(--mute);font-size:13px;margin:0">No Stock Tokens at
+      ${short(S.wallet)} on this chain. The simulator keeps its preset collateral.</p>`;
+    wNote(`Connected · ${short(S.wallet)} · no holdings`); return;
+  }
+  const px = t => (S.feeds.find(f=>f.t===t)||{}).price || 0;
+  const total = S.holdings.reduce((s,h)=>s+h.bal*px(h.t),0);
+  box.innerHTML = S.holdings.map(h=>`<div class="kv"><span class="k">${h.t}
+      <span style="color:var(--faint)">· ${h.bal.toFixed(4)}</span></span>
+      <span class="v">${usd(h.bal*px(h.t))}</span></div>`).join("")
+    + `<div class="kv"><span class="k" style="color:var(--ink)">Portfolio</span>
+       <span class="v" style="color:var(--gold)">${usd(total)}</span></div>
+       <button class="btn gold" id="useHold" style="width:100%;margin-top:14px">Use as collateral</button>`;
+  wNote(`Connected · ${short(S.wallet)} · ${S.holdings.length} position(s)`);
+  $("#useHold").addEventListener("click", ()=>{
+    S.collateral = Math.max(5000, Math.min(500000, Math.round(total)));
+    $("#collSlider").value = S.collateral;
+    location.hash = "#dashboard"; sim();
+  });
 }
 
 /* ---------------- refresh ---------------- */
 async function refresh(){
   try{
-    state.session = sessionAt();
-    const blk = await rpc("eth_blockNumber",[]);
-    state.block = parseInt(blk,16);
+    S.session = sessionAt();
+    S.block = parseInt(await rpc("eth_blockNumber",[]),16);
     const now = Math.floor(Date.now()/1000);
-
-    state.feeds = await Promise.all(FEEDS.map(async f=>{
-      const raw = await rpc("eth_call",[{to:f.a,data:SEL},"latest"]);
-      const {price,updatedAt} = decodeRound(raw);
+    S.feeds = await Promise.all(FEEDS.map(async f=>{
+      const {price,updatedAt} = decodeRound(await rpc("eth_call",[{to:f.feed,data:SEL_ROUND},"latest"]));
       const age = Math.max(0, now-updatedAt);
-      return {...f, price, updatedAt, age, stale: age>HEARTBEAT};
+      return {...f, price, updatedAt, age, stale:age>HEARTBEAT};
     }));
-    state.lastOk = Date.now();
-    // The time machine starts wherever the chain last actually printed.
-    state.anchor = Math.max(...state.feeds.map(r=>r.updatedAt));
-    if(state.wallet) renderHoldings();
+    S.anchor = Math.max(...S.feeds.map(f=>f.updatedAt));
+    S.seeded = true;
 
-    renderStats(); renderTable(); buildWeek(); agentLog();
-    $("#chainNote").textContent =
-      `chain ${CHAIN_ID} · block ${state.block.toLocaleString("en-US")} · ${new Date().toLocaleTimeString("en-US",{hour12:false})}`;
-    $("#connState").textContent = "connected";
-    $("#connState").style.color = "var(--sage)";
-
-    if(!state.seeded && state.feeds.length){
-      state.seeded = true;
-      landing();          // the problem announces itself before any prose
-      sim();
-    }
+    renderTiles(); renderList(); agentLog(); sim();
+    if(S.wallet) renderHoldings();
+    const stale = S.feeds.filter(f=>f.stale).length;
+    $("#led").className = "led" + (stale ? "" : " live");
+    $("#liveTxt").textContent = `block ${S.block.toLocaleString("en-US")}`;
   }catch(e){
-    $("#chainNote").textContent = "mainnet unreachable — "+e.message;
-    $("#connState").textContent = "disconnected";
-    $("#connState").style.color = "var(--coral)";
+    $("#liveTxt").textContent = "disconnected";
+    $("#led").className = "led";
   }
 }
 
-/* ---------------- boot ---------------- */
+/* ---------------- router + boot ---------------- */
+function route(){
+  const v = location.hash.slice(1) || "dashboard";
+  $$(".view").forEach(el=>el.classList.toggle("on", el.id==="v-"+v));
+  $$("nav.pills a").forEach(a=>a.classList.toggle("on", a.dataset.v===v));
+  scrollTo({top:0,behavior:"instant"});
+}
+addEventListener("hashchange", route);
+
 function boot(){
-  ["ageSlider","haircutSlider","borrowSlider"].forEach(id =>
-    $("#"+id).addEventListener("input", sim));
-  $("#collateralSel").addEventListener("change", e=>{
-    state.collateral = Number(e.target.value); sim();
-  });
-  $("#nowBtn").addEventListener("click", ()=>{
-    if(!state.feeds.length) return;
-    $("#ageSlider").value = Math.min(80, Math.round(Math.max(...state.feeds.map(r=>r.age))/3600));
+  buildWeek(); route();
+
+  $("#ageSlider").addEventListener("input", e=>{
+    S.offsetH = +e.target.value;
+    if(!S.machineOn){ S.machineOn = true; $("#machineSw").classList.add("on"); }
     sim();
   });
-  $("#connectBtn").addEventListener("click", connectWallet);
+  $("#haircutSlider").addEventListener("input", e=>{ S.haircut = +e.target.value; sim(); });
+  $("#collSlider").addEventListener("input", e=>{ S.collateral = +e.target.value; sim(); });
+  $("#borrowSlider").addEventListener("input", e=>{ S.borrowPct = +e.target.value; sim(); });
 
-  // Arrow keys scrub the time machine when the Position view is open.
-  document.addEventListener("keydown", e=>{
-    if(!$("#v-position").classList.contains("on")) return;
+  $("#machineSw").addEventListener("click", ()=>{
+    S.machineOn = !S.machineOn;
+    $("#machineSw").classList.toggle("on", S.machineOn);
+    sim();
+  });
+  $("#resetBtn").addEventListener("click", ()=>{
+    S.machineOn=false; S.offsetH=0; S.haircut=0; S.borrowPct=0;
+    $("#machineSw").classList.remove("on");
+    $("#ageSlider").value=0; $("#haircutSlider").value=0; $("#borrowSlider").value=0;
+    sim();
+  });
+  $("#borrowBtn").addEventListener("click", ()=>{
+    const {age,session} = machineTime();
+    const conf = confidence(age, session, S.haircut);
+    S.borrowPct = Math.floor(conf/BPS*100);
+    $("#borrowSlider").value = S.borrowPct; sim();
+  });
+  $("#connectBtn").addEventListener("click", connectWallet);
+  $$("#rangeSeg button").forEach(b=>b.addEventListener("click", ()=>{
+    $$("#rangeSeg button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); S.range = +b.dataset.r; renderTiles();
+  }));
+
+  addEventListener("keydown", e=>{
+    if(!$("#v-dashboard").classList.contains("on")) return;
     if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
     const s = $("#ageSlider");
-    s.value = Math.max(0, Math.min(80, Number(s.value) + (e.key==="ArrowRight"?1:-1)));
-    sim(); e.preventDefault();
+    s.value = Math.max(0, Math.min(80, +s.value + (e.key==="ArrowRight"?1:-1)));
+    s.dispatchEvent(new Event("input")); e.preventDefault();
   });
 
-  if(window.ethereum?.on){
-    window.ethereum.on("accountsChanged", a=>{
-      state.wallet = a[0]||null; state.holdings=[];
-      $("#connectBtn").textContent = state.wallet ? short(state.wallet) : "Connect wallet";
-      if(state.wallet) loadHoldings(); else walletNote("Disconnected.");
-    });
-  }
-  $("#clock").textContent = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",
-    hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date())+" NY";
-  setInterval(()=>{ $("#clock").textContent =
-    new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",
-      minute:"2-digit",hour12:false}).format(new Date())+" NY"; }, 20000);
+  const tick = () => $("#clock").textContent = nyFmt(new Date(),{hour:"2-digit",minute:"2-digit",hour12:false})+" NY";
+  tick(); setInterval(tick, 20000);
 
-  route(); sim(); refresh();
-  setInterval(refresh, 30000);
+  if(window.ethereum?.on) ethereum.on("accountsChanged", a=>{
+    S.wallet = a[0]||null; S.holdings=[];
+    $("#connectBtn").textContent = S.wallet ? short(S.wallet) : "Connect wallet";
+    S.wallet ? loadHoldings() : wNote("Disconnected.");
+  });
+
+  refresh(); setInterval(refresh, 30000);
 }
 document.addEventListener("DOMContentLoaded", boot);
