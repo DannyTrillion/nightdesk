@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NightDesk</title>
+<meta name="description" content="Stock Tokens trade 24/7. Their price feeds don't. A live look at the gap on Robinhood Chain.">
+<style>
+  :root{
+    --bg:#08090c; --panel:#101218; --panel2:#161922; --line:#232733;
+    --ink:#e8eaf0; --mute:#8b93a7; --dim:#5b6376;
+    --fresh:#5ce08a; --warn:#ffb347; --stale:#ff5c5c; --accent:#d7ff3e;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.55 ui-sans-serif,-apple-system,"SF Pro Text",Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  a{color:var(--accent)}
+
+  header{border-bottom:1px solid var(--line);padding-block:14px;position:sticky;top:0;
+    background:rgba(8,9,12,.92);backdrop-filter:blur(8px);z-index:10}
+  .hrow{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.02em}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--stale);
+    box-shadow:0 0 0 4px rgba(255,92,92,.14)}
+  .hlinks{display:flex;gap:18px;font-size:13px;color:var(--mute)}
+  .hlinks a{color:var(--mute);text-decoration:none}
+  .hlinks a:hover{color:var(--ink)}
+
+  .hero{padding-block:56px 40px;border-bottom:1px solid var(--line)}
+  h1{font-size:clamp(30px,5.2vw,52px);line-height:1.04;letter-spacing:-.035em;margin:0 0 18px;font-weight:660}
+  h1 em{font-style:normal;color:var(--stale)}
+  .lede{font-size:clamp(15px,2vw,17px);color:var(--mute);max-width:60ch;margin:0}
+  .lede strong{color:var(--ink);font-weight:550}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:34px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .stat .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+  .stat .v{font-size:27px;letter-spacing:-.02em;margin-top:7px;font-weight:600}
+  .stat .s{font-size:12px;color:var(--mute);margin-top:3px}
+
+  section{padding-block:44px;border-bottom:1px solid var(--line)}
+  h2{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);
+    margin:0 0 6px;font-weight:600}
+  .sub{color:var(--mute);margin:0 0 22px;max-width:66ch}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:560px}
+  th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);
+    text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:12px 16px;border-bottom:1px solid rgba(35,39,51,.55)}
+  tr:last-child td{border-bottom:none}
+  .tick{font-weight:600}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;
+    font-weight:600;letter-spacing:.04em}
+  .pill.stale{background:rgba(255,92,92,.14);color:var(--stale)}
+  .pill.ok{background:rgba(92,224,138,.14);color:var(--fresh)}
+
+  .bar{height:5px;border-radius:99px;background:var(--panel2);overflow:hidden;min-width:88px}
+  .bar i{display:block;height:100%;border-radius:99px}
+
+  .weekgrid{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;margin-top:8px}
+  .weekgrid i{aspect-ratio:1;border-radius:2px;background:var(--panel2)}
+  .weekgrid i.open{background:var(--fresh)}
+  .daylabels{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px;
+    font-size:11px;color:var(--dim);text-align:center}
+  .weekwrap{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+
+  .sim{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  .card.bad{border-color:rgba(255,92,92,.3)}
+  .card.good{border-color:rgba(215,255,62,.3)}
+  .card h3{margin:0 0 3px;font-size:13px;font-weight:600}
+  .card .tagline{font-size:12px;color:var(--mute);margin:0 0 14px;min-height:32px}
+  .cap{font-size:31px;letter-spacing:-.025em;font-weight:620}
+  .card.bad .cap{color:var(--stale)}
+  .card.good .cap{color:var(--accent)}
+  .verdict{font-size:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--mute)}
+
+  .slider{margin-top:22px}
+  .slider label{display:flex;justify-content:space-between;font-size:12px;color:var(--mute);
+    margin-bottom:9px}
+  .slider label b{color:var(--ink);font-weight:600}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .ticks{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:5px}
+
+  .asym{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:18px}
+  .gate{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .gate .g{font-size:24px;font-weight:620;letter-spacing:-.02em}
+  .gate .n{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .gate p{font-size:12.5px;color:var(--mute);margin:9px 0 0}
+
+  footer{padding-block:32px 44px;color:var(--dim);font-size:12.5px}
+  .note{color:var(--dim);font-size:12px;margin-top:14px}
+  @media (max-width:640px){ .sim{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hrow">
+    <div class="brand"><span class="dot" id="livedot"></span> NightDesk</div>
+    <nav class="hlinks">
+      <a href="#live">Live</a>
+      <a href="#gap">The gap</a>
+      <a href="#sim">Simulator</a>
+      <a href="https://github.com/DannyTrillion/nightdesk">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="hero">
+    <h1>Stock Tokens trade 24/7.<br>Their price feeds <em>don't</em>.</h1>
+    <p class="lede">Robinhood Chain settles tokenized equities as plain ERC-20s, transferable every
+    second of every day. The Chainlink feeds behind them update <strong>24/5, following market
+    hours</strong>. Everything below is read live from mainnet, right now, in your browser.</p>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="k">Live price coverage</div>
+        <div class="v mono">19.3%</div>
+        <div class="s">32.5h of every 168h week</div>
+      </div>
+      <div class="stat">
+        <div class="k">Feeds past heartbeat</div>
+        <div class="v mono" id="staleCount">—</div>
+        <div class="s" id="staleSub">reading mainnet…</div>
+      </div>
+      <div class="stat">
+        <div class="k">Oldest price on chain</div>
+        <div class="v mono" id="oldest">—</div>
+        <div class="s">heartbeat is 24h</div>
+      </div>
+      <div class="stat">
+        <div class="k">Market session</div>
+        <div class="v mono" id="session">—</div>
+        <div class="s" id="sessionSub">New York time</div>
+      </div>
+    </div>
+  </div>
+
+  <section id="live">
+    <h2>Live feeds — Robinhood Chain mainnet</h2>
+    <p class="sub">Read directly from the Chainlink aggregator proxies on chain 4663. No backend,
+    no cache. Chainlink documents an 86,400s heartbeat on these feeds, and Robinhood's integration
+    guide tells builders to reject prices older than it.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>Ticker</th><th>Price</th><th>Age</th><th>Confidence</th><th>Heartbeat</th>
+        </tr></thead>
+        <tbody id="feedRows">
+          <tr><td colspan="5" style="color:var(--dim)">connecting to mainnet…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" id="blockNote">—</p>
+  </section>
+
+  <section id="gap">
+    <h2>One week of trading</h2>
+    <p class="sub">Green is when the underlying US equity market is open and the feed is being
+    updated. Every other cell is a Stock Token that can still be bought, sold, lent and liquidated
+    against a price that is no longer moving.</p>
+    <div class="weekwrap" id="week"></div>
+    <div class="daylabels">
+      <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+    </div>
+  </section>
+
+  <section id="sim">
+    <h2>What it costs a lending market</h2>
+    <p class="sub">A borrower with <strong>$35,000</strong> of Stock Token collateral at a 70% base
+    LTV. Drag to age the price and watch the two designs diverge. These are the same numbers the
+    contract test asserts.</p>
+
+    <div class="slider">
+      <label><span>Price age</span><b><span id="ageOut">0</span>h old</b></label>
+      <input type="range" id="age" min="0" max="80" value="0" step="1">
+      <div class="ticks"><span>fresh</span><span>24h — heartbeat</span><span>72h — decay window</span><span>80h</span></div>
+    </div>
+
+    <div class="sim">
+      <div class="card bad">
+        <h3>Naive integrator</h3>
+        <p class="tagline">Follows the documented advice: trust the price, reject it past the heartbeat.</p>
+        <div class="cap mono" id="naiveCap">$24,500</div>
+        <div class="verdict" id="naiveVerdict">Borrowing normally.</div>
+      </div>
+      <div class="card good">
+        <h3>NightDesk</h3>
+        <p class="tagline">Scales borrowing power by confidence, which decays with the session.</p>
+        <div class="cap mono" id="ndCap">$24,500</div>
+        <div class="verdict" id="ndVerdict">Full confidence — 10000 bps.</div>
+      </div>
+    </div>
+
+    <h2 style="margin-top:38px">The asymmetry</h2>
+    <p class="sub">Borrowing and liquidation do not get the same bar. This is the part a binary
+    fresh/stale check cannot express at all.</p>
+    <div class="asym">
+      <div class="gate">
+        <div class="n">Borrow needs</div>
+        <div class="g mono" style="color:var(--accent)">20%</div>
+        <p>Below this the price is too uncertain to size a new position against.</p>
+      </div>
+      <div class="gate">
+        <div class="n">Liquidation needs</div>
+        <div class="g mono" style="color:var(--fresh)">50%</div>
+        <p>Deliberately stricter. A borrower whose collateral is merely hard to value should not
+        lose it because the oracle went quiet.</p>
+      </div>
+      <div class="gate">
+        <div class="n">Agent outage</div>
+        <div class="g mono" style="color:var(--stale)">0%</div>
+        <p>No fresh attestation means confidence is zero. The system fails closed rather than
+        trusting a dead agent.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Built for the Arbitrum Open House Singapore Buildathon.
+    <a href="https://github.com/DannyTrillion/nightdesk">Source on GitHub</a>.
+    Contract reads are unauthenticated calls to <span class="mono">rpc.mainnet.chain.robinhood.com</span>.
+  </footer>
+</div>
+
+<script>
+const RPC = "https://rpc.mainnet.chain.robinhood.com";
+const HEARTBEAT = 86400, DECAY_CLOSED = 72*3600, DECAY_OPEN = 3600, DECAY_EXT = 6*3600;
+
+const FEEDS = [
+  {t:"GOOGL", a:"0xF6f373a037c30F0e5010d854385cA89185AE638b"},
+  {t:"QQQ",   a:"0x80901d846d5D7B030F26B480776EE3b29374C2ae"},
+  {t:"TSM",   a:"0x874cF94aa8eC88Fd9560094dD065f2fB3E41Fc2F"},
+  {t:"SGOV",  a:"0xa0DF4ee0fFf975306345875E3548Fcc519577A11"},
+  {t:"EWY",   a:"0xEFdf54610B62A7753Ec30bDc380847c12D32e1D1"},
+];
+const SELECTOR = "0xfeaf968c"; // latestRoundData()
+
+async function rpc(method, params){
+  const r = await fetch(RPC,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
+  const j = await r.json();
+  if(j.error) throw new Error(j.error.message);
+  return j.result;
+}
+
+// latestRoundData returns 5 words; we need answer (word 1) and updatedAt (word 3).
+function decode(hex){
+  const w = hex.slice(2).match(/.{64}/g);
+  const toInt = h => BigInt("0x"+h);
+  let answer = toInt(w[1]);
+  if (answer >> 255n) answer -= 1n << 256n; // int256
+  return {answer, updatedAt: Number(toInt(w[3]))};
+}
+
+function sessionNow(d=new Date()){
+  const p = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",
+    minute:"numeric",weekday:"short",hour12:false}).formatToParts(d);
+  const g = t => p.find(x=>x.type===t).value;
+  const wd = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(g("weekday"));
+  const m = (Number(g("hour"))%24)*60 + Number(g("minute"));
+  if(wd===0||wd===6) return "Closed";
+  if(m>=240 && m<570) return "PreMarket";
+  if(m>=570 && m<960) return "Open";
+  if(m>=960 && m<1200) return "PostMarket";
+  return "Overnight";
+}
+
+function decayWindow(s){
+  if(s==="Open") return DECAY_OPEN;
+  if(s==="PreMarket"||s==="PostMarket") return DECAY_EXT;
+  return DECAY_CLOSED;
+}
+function confidence(age, s){
+  const w = decayWindow(s);
+  return age >= w ? 0 : Math.round(10000 - (age*10000)/w);
+}
+const fmtAge = s => s<3600 ? `${Math.round(s/60)}m` : `${(s/3600).toFixed(1)}h`;
+const usd = n => "$"+Math.round(n).toLocaleString("en-US");
+
+function confColor(bps){
+  if(bps>6000) return "var(--fresh)";
+  if(bps>2000) return "var(--warn)";
+  return "var(--stale)";
+}
+
+async function refresh(){
+  const sess = sessionNow();
+  document.getElementById("session").textContent = sess;
+  document.getElementById("sessionSub").textContent =
+    new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",
+      minute:"2-digit",hour12:false}).format(new Date()) + " New York";
+
+  try{
+    const blk = await rpc("eth_blockNumber",[]);
+    document.getElementById("blockNote").textContent =
+      `chain 4663 · block ${parseInt(blk,16).toLocaleString("en-US")} · refreshed ${new Date().toLocaleTimeString()}`;
+
+    const now = Math.floor(Date.now()/1000);
+    const rows = await Promise.all(FEEDS.map(async f=>{
+      const raw = await rpc("eth_call",[{to:f.a,data:SELECTOR},"latest"]);
+      const {answer, updatedAt} = decode(raw);
+      const age = Math.max(0, now-updatedAt);
+      return {...f, price:Number(answer)/1e8, age, stale:age>HEARTBEAT, conf:confidence(age,sess)};
+    }));
+
+    const stale = rows.filter(r=>r.stale).length;
+    document.getElementById("staleCount").textContent = `${stale}/${rows.length}`;
+    document.getElementById("staleSub").textContent =
+      stale===rows.length ? "every feed unusable by the documented rule" : "past the 24h heartbeat";
+    const oldest = Math.max(...rows.map(r=>r.age));
+    document.getElementById("oldest").textContent = fmtAge(oldest);
+    document.getElementById("livedot").style.background = stale ? "var(--stale)" : "var(--fresh)";
+
+    document.getElementById("feedRows").innerHTML = rows.map(r=>`
+      <tr>
+        <td class="tick">${r.t}</td>
+        <td class="mono">$${r.price.toFixed(2)}</td>
+        <td class="mono">${fmtAge(r.age)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:9px">
+            <div class="bar" style="flex:1"><i style="width:${r.conf/100}%;background:${confColor(r.conf)}"></i></div>
+            <span class="mono" style="font-size:12px;color:var(--mute);min-width:42px">${r.conf}</span>
+          </div>
+        </td>
+        <td><span class="pill ${r.stale?'stale':'ok'}">${r.stale?'STALE':'OK'}</span></td>
+      </tr>`).join("");
+  }catch(e){
+    document.getElementById("blockNote").textContent = "mainnet unreachable: "+e.message;
+  }
+}
+
+// Week grid: 7 days x 24 hours, green where the cash market is open (9:30-16:00 ET, Mon-Fri).
+(function buildWeek(){
+  const wrap = document.getElementById("week");
+  for(let d=0; d<7; d++){
+    const col = document.createElement("div");
+    col.className = "weekgrid";
+    col.style.gridTemplateColumns = "repeat(2,1fr)";
+    for(let h=0; h<24; h++){
+      const cell = document.createElement("i");
+      if(d>=1 && d<=5 && h>=9 && h<16) cell.className = "open";
+      col.appendChild(cell);
+    }
+    wrap.appendChild(col);
+  }
+})();
+
+// Simulator
+const BASE_LTV = 0.70, COLLATERAL = 35000;
+function sim(){
+  const h = Number(document.getElementById("age").value);
+  document.getElementById("ageOut").textContent = h;
+  const age = h*3600;
+
+  // Naive: full trust until the heartbeat, then nothing.
+  const naive = age > HEARTBEAT ? 0 : COLLATERAL*BASE_LTV;
+  document.getElementById("naiveCap").textContent = usd(naive);
+  document.getElementById("naiveVerdict").textContent = age > HEARTBEAT
+    ? "Price rejected. Protocol halted — borrower locked out until Monday."
+    : (h===0 ? "Borrowing normally." : `Lending against a ${h}h-old price as if it were current.`);
+
+  const conf = confidence(age, "Closed");
+  const nd = COLLATERAL*BASE_LTV*(conf/10000);
+  document.getElementById("ndCap").textContent = usd(nd);
+  document.getElementById("ndVerdict").textContent = conf === 0
+    ? "Confidence exhausted — price is genuinely worthless now."
+    : conf < 2000
+      ? `${conf} bps — below the 2000 bps borrow floor. Existing loans stand; no new debt.`
+      : `${conf} bps confidence. Open for business at a haircut.`;
+}
+document.getElementById("age").addEventListener("input", sim);
+sim();
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
