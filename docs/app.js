@@ -127,26 +127,60 @@ function confidenceHistory(hours){
 }
 
 /* ---------------- tiles ---------------- */
+/* Every sparkline answers its own tile. A flat line means the chart was
+   decoration; these are each derived from the model or the live reads. */
 function renderTiles(){
   const rows = S.feeds; if(!rows.length) return;
   const stale = rows.filter(r=>r.stale).length;
   const oldest = Math.max(...rows.map(r=>r.age));
   const hrs = S.range===7 ? 168 : 24;
+
+  // 1. Coverage: confidence hour by hour across the window - the sawtooth of
+  //    market days rising and weekends bleeding out.
   const hist = confidenceHistory(hrs);
-  const openHrs = S.range===7 ? 32.5 : (sessionAt()==="Closed"?0:6.5);
-  const cov = (openHrs/(S.range===7?168:24))*100;
+  const covSeries = S.range===7 ? hist.filter((_,i)=>i%4===0) : hist;
+  const openHrs = S.range===7 ? 32.5 : (sessionAt()==="Closed" ? 0 : 6.5);
+  const cov = (openHrs/hrs)*100;
+
+  // 2. Heartbeat: one bar per feed, height is age against the 24h heartbeat,
+  //    with the heartbeat itself drawn as a threshold line.
+  const ratios = rows.map(r => Math.min(2, r.age/HEARTBEAT));
+  const hbBars = rows.map((r,i)=>{
+    const bw = 190/rows.length, hgt = Math.max(2,(ratios[i]/2)*30);
+    return `<rect x="${(i*bw+bw*.18).toFixed(1)}" y="${(34-hgt).toFixed(1)}"
+      width="${(bw*.64).toFixed(1)}" height="${hgt.toFixed(1)}" rx="1.5"
+      fill="${r.stale?"var(--red)":"var(--green)"}" opacity=".85"/>`;
+  }).join("");
+
+  // 3. Oldest price: the decay curve, with a marker at where we actually are.
+  const win = DECAY[S.session] || DECAY.Closed;
+  const curve = Array.from({length:40},(_,i)=>confidence((i/39)*win*1.1, S.session));
+  const posX = Math.min(1, oldest/(win*1.1))*190;
+
+  // 4. Session: the coming 24 hours, open hours lit.
+  const next24 = Array.from({length:24},(_,i)=>{
+    const d = new Date(Date.now()+i*3600*1000);
+    return sessionAt(d)==="Open" ? 1 : sessionAt(d)==="Closed" ? .12 : .4;
+  });
 
   const tiles = [
     {k:"Live price coverage", v:cov.toFixed(1), unit:"%", cls:"warn",
-     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">${sparkBars(hist.filter((_,i)=>i%(S.range===7?7:1)===0))}</svg>`},
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">
+       ${sparkBars(covSeries.map(v=>v+120))}</svg>`},
     {k:"Feeds past heartbeat", v:`${stale}/${rows.length}`, unit:"", cls:stale?"bad":"good",
-     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:${stale?'var(--red)':'var(--green)'}">
-       <path d="${sparkPath(rows.map(r=>r.stale?1:0.08))}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`},
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none">
+       ${hbBars}
+       <line x1="0" y1="19" x2="190" y2="19" stroke="var(--stroke-2)" stroke-width="1"
+         stroke-dasharray="3 3"/></svg>`},
     {k:"Oldest price on chain", v:(oldest/3600).toFixed(1), unit:"h", cls:oldest>HEARTBEAT?"bad":"good",
      spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">
-       <path d="${sparkPath(rows.map(r=>r.age))}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`},
+       <path d="${sparkPath(curve)}" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" opacity=".55"/>
+       <line x1="${posX.toFixed(1)}" y1="0" x2="${posX.toFixed(1)}" y2="34"
+         stroke="var(--red)" stroke-width="1.5"/></svg>`},
     {k:"Market session", v:S.session, unit:"", cls:S.session==="Open"?"good":"warn",
-     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">${sparkBars(hist.slice(-24).map(v=>v/100+1))}</svg>`},
+     spark:`<svg class="spark" viewBox="0 0 190 34" preserveAspectRatio="none" style="color:var(--gold)">
+       ${sparkBars(next24)}</svg>`},
   ];
   $("#statTiles").innerHTML = tiles.map(t=>`
     <div class="tile ${t.cls}">
