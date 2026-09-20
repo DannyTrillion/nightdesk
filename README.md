@@ -84,7 +84,8 @@ API, because the API returns `null` in precisely the conditions that matter.
 |---|---|
 | `MarketStateOracle.sol` | Built, 11 unit tests + fuzz passing |
 | `ForkStaleness.t.sol` | Built, passing against live mainnet |
-| Attestor agent | Not started |
+| Attestor agent - chain observation | Built, verified against mainnet |
+| Attestor agent - AI risk assessment | Built, untested (needs `ANTHROPIC_API_KEY`) |
 | Consumer contract (vault / lending demo) | Not started |
 | Testnet deployment | Not started |
 
@@ -94,7 +95,19 @@ API, because the API returns `null` in precisely the conditions that matter.
 cd contracts
 forge test                                    # unit + fuzz
 forge test --match-contract ForkStaleness -vv # live mainnet measurement
+
+cd ../agent
+pnpm install
+pnpm observe                 # read live feeds, derive session - no API key needed
+pnpm attest --dry-run        # + AI risk assessment, nothing written onchain
+pnpm attest                  # push session + haircut to the oracle
+pnpm watch                   # continuous
 ```
+
+The agent derives session state by cross-checking a New York clock against
+observed feed behaviour, so market holidays are handled without a hardcoded
+calendar: if it should be a trading session and every feed has gone quiet for
+two hours, the market is closed whatever the calendar says.
 
 ## Chain reference
 
